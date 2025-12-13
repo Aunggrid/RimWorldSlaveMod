@@ -82,19 +82,11 @@ namespace SlaveRealismImproved
         {
             Log.Message("[SRI] Initializing Slave Realism Improved...");
             
-            // 1. Create Jobs
             CreateJobs();
-            
-            // 2. Create Hediffs
             CreateHediffs();
-            
-            // 3. Create Traits
             CreateTraits();
-            
-            // 4. Create Thoughts
             CreateThoughts();
 
-            // 5. Get XML-defined ScenPartDef
             ScenPart_GodSetup_Def = DefDatabase<ScenPartDef>.GetNamedSilentFail("SRI_ScenPart_GodSetup");
             if (ScenPart_GodSetup_Def == null)
             {
@@ -102,10 +94,8 @@ namespace SlaveRealismImproved
                 CreateScenPartDef();
             }
 
-            // 6. Get XML-defined Consort hediff
             Hediff_ConsortStatus = DefDatabase<HediffDef>.GetNamedSilentFail("SRI_ConsortStatus");
 
-            // 7. Apply Harmony Patches
             var harmony = new Harmony("com.slaverealism.improved");
             harmony.PatchAll();
             
@@ -418,6 +408,7 @@ namespace SlaveRealismImproved
 
         static void CreateTraits()
         {
+            // FIX: Moved 'commonality' inside TraitDegreeData
             Trait_ReincarnatedGod = new TraitDef
             {
                 defName = "SRI_ReincarnatedGod",
@@ -426,7 +417,8 @@ namespace SlaveRealismImproved
                     new TraitDegreeData
                     {
                         label = "Reincarnated God",
-                        description = "A divine being reborn in mortal flesh.\n\n• Cannot use ranged weapons\n• Deflects projectiles (scales with slaves)\n• Gains power from devoted followers\n• Can use Divine Abilities"
+                        description = "A divine being reborn in mortal flesh.\n\n• Cannot use ranged weapons\n• Deflects projectiles (scales with slaves)\n• Gains power from devoted followers\n• Can use Divine Abilities",
+                        commonality = 0f // Correct location
                     }
                 }
             };
@@ -595,14 +587,26 @@ namespace SlaveRealismImproved
 
                 float deflectChance = Mathf.Min(0.20f + (slaves * 0.05f), 0.80f) * 100f;
 
+                // Updated format string with new stats (Dodge, Work Speed, Negotiation)
                 return string.Format(
-                    "Bonuses from {0} slave{1}:\n• Move Speed: +{2}%\n• Melee Damage: +{3}%\n• Research Speed: +{4}%\n• Psychic Sensitivity: +{5}%\n• Bullet Deflection: {6}%",
+                    "Bonuses from {0} slave{1}:\n" +
+                    "• Move Speed: +{2}%\n" +
+                    "• Melee Damage: +{3}%\n" +
+                    "• Melee Dodge: +{4}%\n" +       
+                    "• Global Work Speed: +{5}%\n" + 
+                    "• Research Speed: +{6}%\n" +
+                    "• Negotiation: +{7}%\n" +       
+                    "• Psychic Sensitivity: +{8}%\n" +
+                    "• Bullet Deflection: {9}%",
                     slaves, slaves == 1 ? "" : "s",
-                    (slaves * 5).ToString("F0"),
-                    (slaves * 10).ToString("F0"),
-                    (slaves * 10).ToString("F0"),
-                    (slaves * 10).ToString("F0"),
-                    deflectChance.ToString("F0")
+                    (slaves * 5).ToString("F0"),     // Move Speed
+                    (slaves * 10).ToString("F0"),    // Melee Dmg
+                    (slaves * 5).ToString("F0"),     // Dodge 
+                    (slaves * 10).ToString("F0"),    // Work Speed 
+                    (slaves * 10).ToString("F0"),    // Research
+                    (slaves * 10).ToString("F0"),    // Negotiation 
+                    (slaves * 10).ToString("F0"),    // Psychic
+                    deflectChance.ToString("F0")     // Deflection
                 );
             }
         }
@@ -612,6 +616,13 @@ namespace SlaveRealismImproved
             base.Tick();
             if (pawn.IsHashIntervalTick(200))
             {
+                // FIX: Self-Cleaning. If I'm not a God (no trait), remove this power immediately.
+                if (!SRI_Main.IsGod(pawn))
+                {
+                    pawn.health.RemoveHediff(this);
+                    return;
+                }
+
                 int slaves = 0;
                 if (pawn.Map != null)
                     slaves = pawn.Map.mapPawns.SlavesOfColonySpawned.Count;
@@ -868,6 +879,9 @@ namespace SlaveRealismImproved
         private Dictionary<int, int> dailyLovinCount = new Dictionary<int, int>();
         private int lastDayReset = 0;
         
+        // Track last healing ritual day to limit frequency
+        private int lastHealingRitualDay = -1;
+
         // Ability cooldowns
         private Dictionary<int, int> smiteCooldowns = new Dictionary<int, int>();
         private Dictionary<int, int> massCalmCooldowns = new Dictionary<int, int>();
@@ -875,11 +889,11 @@ namespace SlaveRealismImproved
         private Dictionary<int, int> wrathCooldowns = new Dictionary<int, int>();
         
         // Resurrection tracking
-        private Dictionary<int, int> godDeathTicks = new Dictionary<int, int>(); // GodID -> death tick
-        private Dictionary<int, List<Thing>> gatheredCorpses = new Dictionary<int, List<Thing>>(); // GodID -> corpses
+        private Dictionary<int, int> godDeathTicks = new Dictionary<int, int>(); 
+        private Dictionary<int, List<Thing>> gatheredCorpses = new Dictionary<int, List<Thing>>(); 
         
         // Divine Shield tracking
-        private Dictionary<int, int> shieldCooldowns = new Dictionary<int, int>(); // SlaveID -> cooldown tick
+        private Dictionary<int, int> shieldCooldowns = new Dictionary<int, int>(); 
 
         public SRI_GameComponent(Game game) { Instance = this; }
 
@@ -1183,6 +1197,7 @@ namespace SlaveRealismImproved
             Map m = Find.CurrentMap;
             if (m == null) return;
 
+            // 1. Maintain God Powers on legitimate Gods
             foreach (Pawn g in m.mapPawns.FreeColonistsSpawned.ToList().Where(p => SRI_Main.IsGod(p)))
             {
                 if (!g.health.hediffSet.HasHediff(SRI_Main.Hediff_DivinePower))
@@ -1199,6 +1214,25 @@ namespace SlaveRealismImproved
                             FleckMaker.ThrowMetaIcon(s.Position, s.Map, FleckDefOf.IncapIcon);
                         }
                     }
+                }
+            }
+
+            // 2. FIX: FORCEFULLY REMOVE GOD STATUS FROM SLAVES
+            // This fixes the bug where visitors spawned with the trait before the fix
+            foreach (Pawn s in m.mapPawns.SlavesOfColonySpawned.ToList())
+            {
+                if (SRI_Main.IsGod(s))
+                {
+                    // Strip Trait
+                    Trait godTrait = s.story.traits.GetTrait(SRI_Main.Trait_ReincarnatedGod);
+                    s.story.traits.RemoveTrait(godTrait);
+                    
+                    // Strip Hediff
+                    Hediff power = s.health.hediffSet.GetFirstHediffOfDef(SRI_Main.Hediff_DivinePower);
+                    if (power != null) s.health.RemoveHediff(power);
+
+                    // Debug message to confirm fix
+                    // Messages.Message("Corrected bugged slave: " + s.LabelShort, s, MessageTypeDefOf.NeutralEvent, false);
                 }
             }
         }
@@ -1249,24 +1283,30 @@ namespace SlaveRealismImproved
         {
             Map m = Find.CurrentMap;
             if (m == null) return;
+            
+            int currentDay = GenLocalDate.DayOfYear(m);
 
             foreach (Pawn p in m.mapPawns.FreeColonistsSpawned.ToList())
             {
                 if (p.Downed || p.Dead) continue;
 
+                // Night check (22h to 5h)
                 bool night = GenLocalDate.HourInteger(m) >= 22 || GenLocalDate.HourInteger(m) <= 5;
+                
                 if (night && p.InBed())
                 {
                     bool injured = p.health.hediffSet.hediffs.Any(h => h is Hediff_Injury);
                     int lovinCount = GetLovinCount(p);
 
-                    if (injured || (lovinCount >= 2 && Rand.Chance(0.2f)))
+                    // HEALING RITUAL LOGIC (Limited to once per day via lastHealingRitualDay)
+                    if (currentDay != lastHealingRitualDay && (injured || (lovinCount >= 2 && Rand.Chance(0.2f))))
                     {
                         List<Pawn> concubines = GetAvailableConcubines(p, true);
                         if (concubines.Count >= 2)
                         {
                             concubines.SortByDescending(x => x.health.hediffSet.HasHediff(SRI_Main.Hediff_HeadConcubine));
                             StartHealingTouch(p, concubines[0], concubines[1]);
+                            lastHealingRitualDay = currentDay;
                             continue;
                         }
                     }
@@ -1329,6 +1369,10 @@ namespace SlaveRealismImproved
             Scribe_Collections.Look(ref slaveToMasterMap, "SRI_Map", LookMode.Value, LookMode.Value);
             Scribe_Collections.Look(ref dailyLovinCount, "SRI_Daily", LookMode.Value, LookMode.Value);
             
+            // Fix: Save daily reset trackers
+            Scribe_Values.Look(ref lastDayReset, "SRI_LastDayReset", 0);
+            Scribe_Values.Look(ref lastHealingRitualDay, "SRI_LastHealDay", -1);
+
             // Ability cooldowns
             Scribe_Collections.Look(ref smiteCooldowns, "SRI_SmiteCool", LookMode.Value, LookMode.Value);
             Scribe_Collections.Look(ref massCalmCooldowns, "SRI_CalmCool", LookMode.Value, LookMode.Value);
@@ -1669,10 +1713,13 @@ namespace SlaveRealismImproved
                     Messages.Message(Master.LabelShort + " received Healing Touch!", Master, MessageTypeDefOf.PositiveEvent, true);
                 }
 
-                // Boost devotion for performers
+                // Boost devotion
                 Hediff devotion = pawn.health.hediffSet.GetFirstHediffOfDef(SRI_Main.Hediff_Devotion);
                 if (devotion is Hediff_Devotion dev)
                     dev.AddDevotion(0.03f);
+
+                // Give Lovin' memory to the slave performed the ritual
+                pawn.needs.mood.thoughts.memories.TryGainMemory(ThoughtDefOf.GotSomeLovin, Master);
             });
             yield return ritual;
         }
@@ -1952,7 +1999,9 @@ namespace SlaveRealismImproved
             foreach (var g in __result) yield return g;
 
             // God abilities
-            if (SRI_Main.IsGod(__instance) && !__instance.Dead && !__instance.Downed)
+            // FIX: Added "&& !__instance.IsSlave" below. 
+            // This hides the skills immediately if they are enslaved, even if the trait isn't gone yet.
+            if (SRI_Main.IsGod(__instance) && !__instance.Dead && !__instance.Downed && !__instance.IsSlave)
             {
                 foreach (Gizmo gizmo in GetGodAbilityGizmos(__instance))
                     yield return gizmo;
@@ -2388,7 +2437,7 @@ namespace SlaveRealismImproved
         }
     }
 
-    // Proximity stat bonuses for devoted slaves
+    // Proximity stat bonuses for devoted slaves AND God scaling
     [HarmonyPatch(typeof(StatExtension), "GetStatValue")]
     public static class Patch_DevotionStats
     {
@@ -2396,21 +2445,27 @@ namespace SlaveRealismImproved
         {
             if (!(thing is Pawn pawn)) return;
 
-            // God's Divine Power scaling
+            // --- GOD'S DIVINE POWER SCALING ---
             Hediff divine = pawn.health?.hediffSet?.GetFirstHediffOfDef(SRI_Main.Hediff_DivinePower);
             if (divine != null)
             {
                 int count = (int)divine.Severity;
                 if (count > 0)
                 {
+                    // Existing stats
                     if (stat == StatDefOf.MoveSpeed) __result *= (1f + (count * 0.05f));
                     else if (stat == StatDefOf.MeleeDamageFactor) __result += (count * 0.10f);
                     else if (stat == StatDefOf.ResearchSpeed) __result += (count * 0.10f);
                     else if (stat == StatDefOf.PsychicSensitivity) __result += (count * 0.10f);
+                    
+                    // NEW ADDITIONS
+                    else if (stat == StatDefOf.MeleeDodgeChance) __result += (count * 0.05f);   // +5% Dodge per slave
+                    else if (stat == StatDefOf.WorkSpeedGlobal) __result += (count * 0.10f);    // +10% All Work Speed
+                    else if (stat == StatDefOf.NegotiationAbility) __result += (count * 0.10f); // +10% Negotiation
                 }
             }
 
-            // Slave's Devotion proximity buffs
+            // --- SLAVE DEVOTION BUFFS ---
             if (pawn.IsSlaveOfColony)
             {
                 Pawn master = SRI_GameComponent.Instance?.GetMasterOf(pawn);
@@ -2528,7 +2583,8 @@ namespace SlaveRealismImproved
                 {
                     defaultLabel = "Master & Slave Mode",
                     defaultDesc = "Allow both colonists and slaves to share this bed.",
-                    icon = ContentFinder<Texture2D>.Get("UI/Commands/AsColonist", true),
+                    // Use a guaranteed vanilla icon to avoid crash
+                    icon = ContentFinder<Texture2D>.Get("UI/Commands/ForPrisoners", true), 
                     isActive = () => SRI_GameComponent.Instance?.IsHybrid(__instance) == true,
                     toggleAction = delegate
                     {
@@ -2560,13 +2616,25 @@ namespace SlaveRealismImproved
         {
             if (bedThing is Building_Bed bed && SRI_GameComponent.Instance?.IsHybrid(bed) == true)
             {
-                if ((sleeper.IsSlaveOfColony || sleeper.IsColonist) && !bed.Destroyed && !bed.IsBurning())
+                // 1. Basic Safety Checks (Must pass these)
+                if (bed.Destroyed || bed.IsBurning() || bed.IsForbidden(sleeper)) return true; // Let vanilla handle false
+
+                // 2. Medical Check: If bed is medical, pawn MUST be sick/injured
+                if (bed.Medical && !HealthAIUtility.ShouldSeekMedicalRest(sleeper)) return true; // Let vanilla handle false
+
+                // 3. Ownership Check (The Cause of your Crash)
+                // Only return TRUE if the pawn is ALREADY assigned or there is an EMPTY slot.
+                // If the bed is full of other people, we must not force it to be valid.
+                bool isOwner = bed.CompAssignableToPawn.AssignedPawns.Contains(sleeper);
+                bool hasSpace = bed.AnyUnownedSleepingSlot;
+
+                if ((sleeper.IsSlaveOfColony || sleeper.IsColonist) && (isOwner || hasSpace))
                 {
                     __result = true;
-                    return false;
+                    return false; // Skip vanilla logic (which blocks slaves)
                 }
             }
-            return true;
+            return true; // Fallback to vanilla
         }
     }
 
