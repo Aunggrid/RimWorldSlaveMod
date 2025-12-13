@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+  <ScenarioDef>
+    <defName>SRI_HaremGod</defName>
+    <label>Harem of the Reincarnated God</label>
+    <description>A deity has descended with his devoted harem.</description>
+    <scenario>
+      <summary>A reincarnated god begins with a devoted harem of slaves.</summary>
+      <playerFaction>
+        <def>PlayerFaction</def>
+        <factionDef>PlayerColony</factionDef>
+      </playerFaction>
+      <parts>
+        
+        <!-- Configure Starting Pawns -->
+        <li Class="ScenPart_ConfigPage_ConfigureStartingPawns">
+          <def>ConfigPage_ConfigureStartingPawns</def>
+          <pawnCount>5</pawnCount>
+          <pawnChoiceCount>8</pawnChoiceCount>
+        </li>
+
+        <!-- Arrival Method -->
+        <li Class="ScenPart_PlayerPawnsArriveMethod">
+          <def>PlayerPawnsArriveMethod</def>
+          <method>DropPods</method>
+        </li>
+
+        <!-- Starting Resources -->
+        <li Class="ScenPart_StartingThing_Defined">
+          <def>StartingThing_Defined</def>
+          <thingDef>Silver</thingDef>
+          <count>2000</count>
+        </li>
+        
+        <li Class="ScenPart_StartingThing_Defined">
+          <def>StartingThing_Defined</def>
+          <thingDef>Gold</thingDef>
+          <count>500</count>
+        </li>
+        
+        <li Class="ScenPart_StartingThing_Defined">
+          <def>StartingThing_Defined</def>
+          <thingDef>MealSurvivalPack</thingDef>
+          <count>50</count>
+        </li>
+        
+        <li Class="ScenPart_StartingThing_Defined">
+          <def>StartingThing_Defined</def>
+          <thingDef>MedicineIndustrial</thingDef>
+          <count>30</count>
+        </li>
+
+        <!-- God Setup -->
+        <li Class="SlaveRealismImproved.ScenPart_GodSetup">
+          <def>SRI_ScenPart_GodSetup</def>
+        </li>
+
+      </parts>
+    </scenario>
+  </ScenarioDef>
+</Defs>

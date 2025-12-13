@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+  <ScenPartDef>
+    <defName>SRI_ScenPart_GodSetup</defName>
+    <label>God and Harem Setup</label>
+    <description>The God starts with high stats and specific traits.</description>
+    <scenPartClass>SlaveRealismImproved.ScenPart_GodSetup</scenPartClass>
+    <category>StartingImportant</category>
+  </ScenPartDef>
+</Defs>
