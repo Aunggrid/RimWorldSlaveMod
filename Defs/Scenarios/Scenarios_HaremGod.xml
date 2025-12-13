@@ -3,16 +3,23 @@
   <ScenarioDef>
     <defName>SRI_HaremGod</defName>
     <label>Harem of the Reincarnated God</label>
-    <description>A deity has descended with his devoted harem.</description>
+    <description>A deity has descended with his devoted harem of slaves. The God gains power from his followers - the more devoted they become, the stronger everyone grows.
+
+Features:
+• Reincarnated God with Divine Abilities (Smite, Mass Calm, Blessing, Wrath)
+• Devotion system - slaves grow from Unwilling to Ascended over time
+• Divine Shield - high-tier slaves can block attacks for their master
+• Proximity buffs when slaves are near their master
+• Resurrection ritual if the God falls</description>
     <scenario>
-      <summary>A reincarnated god begins with a devoted harem of slaves.</summary>
+      <summary>A reincarnated god begins with a devoted harem of slaves who grow stronger through devotion.</summary>
       <playerFaction>
         <def>PlayerFaction</def>
         <factionDef>PlayerColony</factionDef>
       </playerFaction>
       <parts>
         
-        <!-- Configure Starting Pawns -->
+        <!-- Configure Starting Pawns: 1 God + 4 Slaves -->
         <li Class="ScenPart_ConfigPage_ConfigureStartingPawns">
           <def>ConfigPage_ConfigureStartingPawns</def>
           <pawnCount>5</pawnCount>
@@ -50,7 +57,25 @@
           <count>30</count>
         </li>
 
-        <!-- God Setup -->
+        <li Class="ScenPart_StartingThing_Defined">
+          <def>StartingThing_Defined</def>
+          <thingDef>ComponentIndustrial</thingDef>
+          <count>30</count>
+        </li>
+
+        <li Class="ScenPart_StartingThing_Defined">
+          <def>StartingThing_Defined</def>
+          <thingDef>Steel</thingDef>
+          <count>450</count>
+        </li>
+
+        <li Class="ScenPart_StartingThing_Defined">
+          <def>StartingThing_Defined</def>
+          <thingDef>WoodLog</thingDef>
+          <count>300</count>
+        </li>
+
+        <!-- God Setup (applies traits, skills, hediffs) -->
         <li Class="SlaveRealismImproved.ScenPart_GodSetup">
           <def>SRI_ScenPart_GodSetup</def>
         </li>

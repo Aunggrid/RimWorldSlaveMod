@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <Defs>
+  <!-- Consort Status (basic marker hediff) -->
   <HediffDef>
     <defName>SRI_ConsortStatus</defName>
     <label>consort</label>
