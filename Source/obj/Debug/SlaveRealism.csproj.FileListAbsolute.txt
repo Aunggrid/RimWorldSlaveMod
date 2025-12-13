@@ -5,5 +5,6 @@ D:\SteamLibrary\steamapps\common\RimWorld\Mods\SlaveRealismImproved\source\obj\D
 D:\SteamLibrary\steamapps\common\RimWorld\Mods\SlaveRealismImproved\source\obj\Debug\SlaveRealism.AssemblyInfoInputs.cache
 D:\SteamLibrary\steamapps\common\RimWorld\Mods\SlaveRealismImproved\source\obj\Debug\SlaveRealism.AssemblyInfo.cs
 D:\SteamLibrary\steamapps\common\RimWorld\Mods\SlaveRealismImproved\source\obj\Debug\SlaveRealism.csproj.CoreCompileInputs.cache
+D:\SteamLibrary\steamapps\common\RimWorld\Mods\SlaveRealismImproved\source\obj\Debug\SlaveRealism.sourcelink.json
 D:\SteamLibrary\steamapps\common\RimWorld\Mods\SlaveRealismImproved\source\obj\Debug\SlaveRealism.dll
 D:\SteamLibrary\steamapps\common\RimWorld\Mods\SlaveRealismImproved\source\obj\Debug\SlaveRealism.pdb
