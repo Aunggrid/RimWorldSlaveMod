@@ -1731,16 +1731,25 @@ namespace SlaveRealismImproved
             if (map == null) return true;
 
             // ค้นหาทาสที่มีโล่พร้อมใช้งาน - เลือกคนที่ใกล้ God ที่สุด
-            var shielder = map.mapPawns.SlavesOfColonySpawned
-                .Where(s =>
-                    !s.Dead && !s.Downed && s.Awake() &&
-                    Defs.Tier(s) >= 3 &&
-                    s.Position.InHorDistOf(p.Position, 15f) &&
-                    s.health.hediffSet.GetFirstHediffOfDef(Defs.H_Shield) is Hediff_Shield h &&
-                    h.ready
-                )
-                .OrderBy(s => s.Position.DistanceTo(p.Position)) // เลือกคนใกล้ที่สุดก่อน
-                .FirstOrDefault();
+            Pawn shielder = null;
+            float closestDist = float.MaxValue;
+
+            foreach (var s in map.mapPawns.SlavesOfColonySpawned)
+            {
+                if (s.Dead || s.Downed || !s.Awake()) continue;
+                if (Defs.Tier(s) < 3) continue;
+                if (!s.Position.InHorDistOf(p.Position, 15f)) continue;
+
+                var shield = s.health.hediffSet.GetFirstHediffOfDef(Defs.H_Shield) as Hediff_Shield;
+                if (shield == null || !shield.ready) continue;
+
+                float dist = s.Position.DistanceTo(p.Position);
+                if (dist < closestDist)
+                {
+                    closestDist = dist;
+                    shielder = s;
+                }
+            }
 
             if (shielder != null)
             {
