@@ -1568,46 +1568,15 @@ namespace SlaveRealismImproved
 
                 // 2. เช็คสถานะโล่
                 var shield = slave.health.hediffSet.GetFirstHediffOfDef(Defs.H_Shield) as Hediff_Shield;
-
-                // *** FIX: ตรวจสอบว่าทาสคนนี้เป็นคนที่เพิ่งรับดาเมจไปหรือไม่ ***
-                // ถ้าเป็น shieldBlocker = ต้องไปตีศัตรู (โล่แตกแล้ว)
-                // ถ้าไม่ใช่ และมีโล่พร้อมใช้ = ยืนเฝ้า
                 bool isTheBlocker = (shieldBlocker != null && slave == shieldBlocker);
-                bool hasActiveShield = (shield != null && shield.ready && !isTheBlocker);
 
                 // บังคับ Draft ทันที
                 if (!slave.Drafted && slave.drafter != null) slave.drafter.Drafted = true;
 
                 // 3. Logic สั่งงาน
-                if (hasActiveShield)
+                if (isTheBlocker)
                 {
-                    // === กรณีมีโล่พร้อมใช้: เป็น Bodyguard ===
-                    // ถ้าอยู่ไกลเกิน 3 ช่อง -> วิ่งกลับมาหา God
-                    if (!slave.Position.InHorDistOf(god.Position, 3f))
-                    {
-                        slave.jobs.StopAll();
-                        Job guardJob = JobMaker.MakeJob(JobDefOf.Goto, god);
-                        guardJob.playerForced = true;
-                        guardJob.collideWithPawns = true;
-                        slave.jobs.TryTakeOrderedJob(guardJob, JobTag.DraftedOrder);
-                    }
-                    // ถ้าอยู่ใกล้แล้ว -> ยืนเฝ้าระวังภัย (Wait_Combat)
-                    else
-                    {
-                        // สั่งให้ยืนเฝ้า (ไม่ไปตีใคร)
-                        if (slave.CurJobDef != JobDefOf.Wait_Combat)
-                        {
-                            slave.jobs.StopAll();
-                            Job waitJob = JobMaker.MakeJob(JobDefOf.Wait_Combat, god.Position);
-                            waitJob.playerForced = true;
-                            waitJob.expiryInterval = 2000; // ยืนเฝ้ายาวๆ (ประมาณ 1 ชม.) จนกว่าจะมีคำสั่งใหม่
-                            slave.jobs.TryTakeOrderedJob(waitJob, JobTag.DraftedOrder);
-                        }
-                    }
-                }
-                else if (isTheBlocker || (shield != null && !shield.ready))
-                {
-                    // === กรณีเป็นคนที่โล่แตก: เป็น Berserker ===
+                    // === กรณีเป็นคนที่เพิ่งรับดาเมจ (โล่แตก): เป็น Berserker ===
                     // วิ่งไปกระทืบศัตรู
                     if (slave.CurJobDef != JobDefOf.AttackMelee || (slave.CurJob != null && slave.CurJob.targetA.Thing != attacker))
                     {
@@ -1621,9 +1590,36 @@ namespace SlaveRealismImproved
                         slave.jobs.TryTakeOrderedJob(attackJob, JobTag.DraftedOrder);
                     }
                 }
-                else if (slave.health.hediffSet.HasHediff(Defs.H_Stockholm) && shield == null)
+                else if (shield != null)
                 {
-                    // === กรณีมี Stockholm แต่ไม่มีโล่: Berserker เหมือนเดิม ===
+                    // === กรณีมีโล่ (ไม่ว่าจะ ready หรือ cooldown): เป็น Bodyguard ===
+                    // ทาสที่มีโล่จะยืนเฝ้าใกล้ God เสมอ รอจนกว่าโล่จะพร้อมใช้อีกครั้ง
+                    // ถ้าอยู่ไกลเกิน 3 ช่อง -> วิ่งกลับมาหา God
+                    if (!slave.Position.InHorDistOf(god.Position, 3f))
+                    {
+                        slave.jobs.StopAll();
+                        Job guardJob = JobMaker.MakeJob(JobDefOf.Goto, god);
+                        guardJob.playerForced = true;
+                        guardJob.collideWithPawns = true;
+                        slave.jobs.TryTakeOrderedJob(guardJob, JobTag.DraftedOrder);
+                    }
+                    // ถ้าอยู่ใกล้แล้ว -> ยืนเฝ้าระวังภัย (Wait_Combat)
+                    else
+                    {
+                        // สั่งให้ยืนเฝ้า (ไม่ไปตีใคร) รอโล่ cooldown
+                        if (slave.CurJobDef != JobDefOf.Wait_Combat)
+                        {
+                            slave.jobs.StopAll();
+                            Job waitJob = JobMaker.MakeJob(JobDefOf.Wait_Combat, god.Position);
+                            waitJob.playerForced = true;
+                            waitJob.expiryInterval = 2000; // ยืนเฝ้ายาวๆ จนกว่าจะมีคำสั่งใหม่
+                            slave.jobs.TryTakeOrderedJob(waitJob, JobTag.DraftedOrder);
+                        }
+                    }
+                }
+                else if (slave.health.hediffSet.HasHediff(Defs.H_Stockholm))
+                {
+                    // === กรณีมี Stockholm แต่ไม่มีโล่: Berserker ===
                     if (slave.CurJobDef != JobDefOf.AttackMelee || (slave.CurJob != null && slave.CurJob.targetA.Thing != attacker))
                     {
                         slave.jobs.StopAll();
@@ -1734,14 +1730,17 @@ namespace SlaveRealismImproved
             var map = p.Map;
             if (map == null) return true;
 
-            // ค้นหาทาสที่มีโล่พร้อมใช้งาน
-            var shielder = map.mapPawns.SlavesOfColonySpawned.FirstOrDefault(s => 
-                !s.Dead && !s.Downed && s.Awake() &&
-                Defs.Tier(s) >= 3 && 
-                s.Position.InHorDistOf(p.Position, 15f) &&
-                s.health.hediffSet.GetFirstHediffOfDef(Defs.H_Shield) is Hediff_Shield h && 
-                h.ready
-            );
+            // ค้นหาทาสที่มีโล่พร้อมใช้งาน - เลือกคนที่ใกล้ God ที่สุด
+            var shielder = map.mapPawns.SlavesOfColonySpawned
+                .Where(s =>
+                    !s.Dead && !s.Downed && s.Awake() &&
+                    Defs.Tier(s) >= 3 &&
+                    s.Position.InHorDistOf(p.Position, 15f) &&
+                    s.health.hediffSet.GetFirstHediffOfDef(Defs.H_Shield) is Hediff_Shield h &&
+                    h.ready
+                )
+                .OrderBy(s => s.Position.DistanceTo(p.Position)) // เลือกคนใกล้ที่สุดก่อน
+                .FirstOrDefault();
 
             if (shielder != null)
             {
