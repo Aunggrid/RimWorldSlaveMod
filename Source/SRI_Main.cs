@@ -11,2689 +11,1204 @@ using Verse.Sound;
 
 namespace SlaveRealismImproved
 {
-    [StaticConstructorOnStartup]
-    public static class SRI_Main
+    // ══════════════════════════════════════════════════════════════════════════════
+    //                              MOD SETTINGS
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    public class SRI_Settings : ModSettings
     {
-        // ==================== DEFINITIONS ====================
-        
-        // Jobs
-        public static JobDef Job_SlaveLovin;
-        public static JobDef Job_PunishSlave;
-        public static JobDef Job_Procure;
-        public static JobDef Job_ConcubineLovin;
-        public static JobDef Job_HealingTouch;
-        public static JobDef Job_DivineSmite;
-        public static JobDef Job_ResurrectionRitual;
-        public static JobDef Job_GatherCorpse;
+        public bool enableAbilities = true, enableResurrection = true, enableSpecializations = true;
+        public bool unlockSlaveWork = true, showNotifications = true, showOverlay = true, showGodGlow = true;
+        public float devotionRate = 1f, cooldownMult = 1f, powerMult = 1f;
 
-        // Hediffs
-        public static HediffDef Hediff_Stockholm;
-        public static HediffDef Hediff_ProtectiveRage;
-        public static HediffDef Hediff_PunishedPain;
-        public static HediffDef Hediff_HealingTouch;
-        public static HediffDef Hediff_HeadConcubine;
-        public static HediffDef Hediff_DivinePower;
-        public static HediffDef Hediff_Devotion;
-        public static HediffDef Hediff_DivineShield;
-        public static HediffDef Hediff_DivineBlessing;
-        public static HediffDef Hediff_ResurrectionSickness;
-        public static HediffDef Hediff_RitualExhaustion;
-        public static HediffDef Hediff_ConsortStatus;
-
-        // Traits
-        public static TraitDef Trait_ReincarnatedGod;
-
-        // Thoughts
-        public static ThoughtDef Thought_SatisfiedByMaster;
-        public static ThoughtDef Thought_ForcedAffection;
-        public static ThoughtDef Thought_WitnessedDivineWrath;
-        public static ThoughtDef Thought_ReceivedBlessing;
-        public static ThoughtDef Thought_GodResurrected;
-
-        // ScenPart
-        public static ScenPartDef ScenPart_GodSetup_Def;
-
-        // ==================== CONSTANTS ====================
-        
-        // Devotion Tiers (severity thresholds)
-        public const float DEVOTION_TIER_1 = 0.15f;  // ~5 days
-        public const float DEVOTION_TIER_2 = 0.35f;  // ~12 days
-        public const float DEVOTION_TIER_3 = 0.60f;  // ~20 days
-        public const float DEVOTION_TIER_4 = 0.90f;  // ~30 days
-        
-        // Ability Cooldowns (in ticks, 2500 ticks = 1 hour)
-        public const int COOLDOWN_SMITE = 2500;           // 1 hour
-        public const int COOLDOWN_MASS_CALM = 10000;      // 4 hours
-        public const int COOLDOWN_BLESSING = 20000;       // 8 hours
-        public const int COOLDOWN_WRATH = 60000;          // 24 hours
-        public const int COOLDOWN_DIVINE_SHIELD = 5000;   // 2 hours
-        
-        // Resurrection
-        public const int RESURRECTION_TIME_LIMIT = 180000; // 3 days
-        public const int RESURRECTION_RITUAL_DURATION = 60000; // 1 day
-        public const float HP_PER_HUMAN_CORPSE = 30f;
-        public const float HP_PER_LARGE_ANIMAL = 20f;
-        public const float HP_PER_SMALL_ANIMAL = 10f;
-        public const int MIN_CORPSES_FOR_RESURRECTION = 3;
-
-        // ==================== INITIALIZATION ====================
-        
-        static SRI_Main()
+        public override void ExposeData()
         {
-            Log.Message("[SRI] Initializing Slave Realism Improved...");
-            
-            CreateJobs();
-            CreateHediffs();
-            CreateTraits();
-            CreateThoughts();
-
-            ScenPart_GodSetup_Def = DefDatabase<ScenPartDef>.GetNamedSilentFail("SRI_ScenPart_GodSetup");
-            if (ScenPart_GodSetup_Def == null)
-            {
-                Log.Warning("[SRI] Could not find SRI_ScenPart_GodSetup - creating programmatically");
-                CreateScenPartDef();
-            }
-
-            Hediff_ConsortStatus = DefDatabase<HediffDef>.GetNamedSilentFail("SRI_ConsortStatus");
-
-            var harmony = new Harmony("com.slaverealism.improved");
-            harmony.PatchAll();
-            
-            Log.Message("[SRI] Initialization complete!");
-        }
-
-        static void CreateJobs()
-        {
-            Job_SlaveLovin = CreateJob("SRI_SlaveLovin", typeof(JobDriver_SlaveLovin), "making love.");
-            Job_PunishSlave = CreateJob("SRI_PunishSlave", typeof(JobDriver_PunishSlave), "punishing slave.", true);
-            Job_Procure = CreateJob("SRI_Procure", typeof(JobDriver_Procure), "procuring victim.");
-            Job_ConcubineLovin = CreateJob("SRI_ConcubineLovin", typeof(JobDriver_ConcubineLovin), "attending to master.");
-            Job_HealingTouch = CreateJob("SRI_HealingTouch", typeof(JobDriver_HealingTouch), "performing healing ritual.");
-            Job_DivineSmite = CreateJob("SRI_DivineSmite", typeof(JobDriver_DivineSmite), "channeling divine wrath.");
-            Job_ResurrectionRitual = CreateJob("SRI_ResurrectionRitual", typeof(JobDriver_ResurrectionRitual), "performing resurrection ritual.");
-            Job_GatherCorpse = CreateJob("SRI_GatherCorpse", typeof(JobDriver_GatherCorpse), "gathering corpse for ritual.");
-        }
-
-        static JobDef CreateJob(string defName, Type driver, string report, bool showWeapon = false)
-        {
-            JobDef j = new JobDef
-            {
-                defName = defName,
-                driverClass = driver,
-                reportString = report,
-                playerInterruptible = true,
-                checkOverrideOnDamage = CheckJobOverrideOnDamageMode.Always,
-                alwaysShowWeapon = showWeapon,
-                casualInterruptible = false,
-                suspendable = false
-            };
-            DefDatabase<JobDef>.Add(j);
-            return j;
-        }
-
-        static void CreateHediffs()
-        {
-            // Stockholm Syndrome
-            Hediff_Stockholm = new HediffDef
-            {
-                defName = "SRI_StockholmSyndrome",
-                label = "Stockholm Syndrome",
-                description = "This slave has developed a deep psychological bond with their master.",
-                hediffClass = typeof(HediffWithComps),
-                defaultLabelColor = Color.cyan,
-                isBad = false,
-                stages = new List<HediffStage>
-                {
-                    new HediffStage
-                    {
-                        statOffsets = new List<StatModifier>
-                        {
-                            new StatModifier { stat = StatDefOf.GlobalLearningFactor, value = 0.2f }
-                        }
-                    }
-                },
-                comps = new List<HediffCompProperties>
-                {
-                    new HediffCompProperties { compClass = typeof(HediffComp_StockholmConversion) }
-                }
-            };
-            DefDatabase<HediffDef>.Add(Hediff_Stockholm);
-
-            // Protective Rage
-            Hediff_ProtectiveRage = new HediffDef
-            {
-                defName = "SRI_ProtectiveRage",
-                label = "Protective Rage",
-                description = "Adrenaline-fueled rage to protect their master!",
-                hediffClass = typeof(HediffWithComps),
-                defaultLabelColor = Color.red,
-                isBad = false,
-                comps = new List<HediffCompProperties>
-                {
-                    new HediffCompProperties_Disappears { disappearsAfterTicks = new IntRange(2500, 5000), showRemainingTime = true },
-                    new HediffCompProperties { compClass = typeof(HediffComp_RageSustain) }
-                },
-                stages = new List<HediffStage>
-                {
-                    new HediffStage
-                    {
-                        painFactor = 0.1f,
-                        statOffsets = new List<StatModifier>
-                        {
-                            new StatModifier { stat = StatDefOf.MoveSpeed, value = 3.0f },
-                            new StatModifier { stat = StatDefOf.MeleeHitChance, value = 0.30f },
-                            new StatModifier { stat = StatDefOf.MeleeDodgeChance, value = 0.30f },
-                            new StatModifier { stat = StatDefOf.MeleeDamageFactor, value = 1.5f },
-                            new StatModifier { stat = StatDefOf.MeleeWeapon_CooldownMultiplier, value = -0.5f }
-                        },
-                        capMods = new List<PawnCapacityModifier>
-                        {
-                            new PawnCapacityModifier { capacity = PawnCapacityDefOf.Manipulation, offset = 1.0f },
-                            new PawnCapacityModifier { capacity = PawnCapacityDefOf.Consciousness, offset = 0.5f }
-                        }
-                    }
-                }
-            };
-            DefDatabase<HediffDef>.Add(Hediff_ProtectiveRage);
-
-            // Punished Pain
-            Hediff_PunishedPain = new HediffDef
-            {
-                defName = "SRI_PunishedPain",
-                label = "Punished",
-                description = "Still aching from recent punishment.",
-                hediffClass = typeof(HediffWithComps),
-                defaultLabelColor = new Color(0.8f, 0.4f, 0f),
-                isBad = true,
-                comps = new List<HediffCompProperties>
-                {
-                    new HediffCompProperties_Disappears { disappearsAfterTicks = new IntRange(10000, 20000), showRemainingTime = true }
-                },
-                stages = new List<HediffStage>
-                {
-                    new HediffStage { painOffset = 0.35f }
-                }
-            };
-            DefDatabase<HediffDef>.Add(Hediff_PunishedPain);
-
-            // Healing Touch
-            Hediff_HealingTouch = new HediffDef
-            {
-                defName = "SRI_HealingTouch",
-                label = "Healing Touch",
-                description = "Blessed with accelerated healing.",
-                hediffClass = typeof(HediffWithComps),
-                defaultLabelColor = Color.green,
-                isBad = false,
-                comps = new List<HediffCompProperties>
-                {
-                    new HediffCompProperties_Disappears { disappearsAfterTicks = new IntRange(15000, 30000), showRemainingTime = true }
-                },
-                stages = new List<HediffStage>
-                {
-                    new HediffStage
-                    {
-                        statOffsets = new List<StatModifier>
-                        {
-                            new StatModifier { stat = StatDefOf.ImmunityGainSpeed, value = 0.5f },
-                            new StatModifier { stat = StatDefOf.InjuryHealingFactor, value = 0.5f }
-                        }
-                    }
-                }
-            };
-            DefDatabase<HediffDef>.Add(Hediff_HealingTouch);
-
-            // Head Concubine
-            Hediff_HeadConcubine = new HediffDef
-            {
-                defName = "SRI_HeadConcubine",
-                label = "Head Concubine",
-                description = "The master's favorite.",
-                hediffClass = typeof(HediffWithComps),
-                defaultLabelColor = new Color(1f, 0.8f, 0f),
-                isBad = false,
-                stages = new List<HediffStage>
-                {
-                    new HediffStage
-                    {
-                        statOffsets = new List<StatModifier>
-                        {
-                            new StatModifier { stat = StatDefOf.SocialImpact, value = 0.2f }
-                        }
-                    }
-                }
-            };
-            DefDatabase<HediffDef>.Add(Hediff_HeadConcubine);
-
-            // Divine Power (God's scaling hediff)
-            Hediff_DivinePower = new HediffDef
-            {
-                defName = "SRI_DivinePower",
-                label = "Divine Power",
-                description = "The god draws power from devoted followers.\n\nPer slave:\n• +5% Move Speed\n• +10% Melee Damage\n• +10% Research Speed\n• +10% Psychic Sensitivity\n• +5% Bullet Deflection",
-                hediffClass = typeof(Hediff_DivineScaling),
-                defaultLabelColor = new Color(1f, 0.9f, 0.2f),
-                isBad = false
-            };
-            DefDatabase<HediffDef>.Add(Hediff_DivinePower);
-
-            // Devotion (Slave tier system)
-            Hediff_Devotion = new HediffDef
-            {
-                defName = "SRI_Devotion",
-                label = "Devotion",
-                description = "Measures the slave's devotion to their master.\n\nTier 0: Unwilling (0-14%)\nTier 1: Obedient (15-34%)\nTier 2: Devoted (35-59%)\nTier 3: Fanatical (60-89%)\nTier 4: Ascended (90-100%)",
-                hediffClass = typeof(Hediff_Devotion),
-                defaultLabelColor = new Color(0.8f, 0.5f, 1f),
-                isBad = false,
-                minSeverity = 0.01f,
-                maxSeverity = 1.0f,
-                initialSeverity = 0.01f
-            };
-            DefDatabase<HediffDef>.Add(Hediff_Devotion);
-
-            // Divine Shield
-            Hediff_DivineShield = new HediffDef
-            {
-                defName = "SRI_DivineShield",
-                label = "Divine Shield",
-                description = "Projecting a protective shield around their master. Cannot move while shielding.",
-                hediffClass = typeof(Hediff_DivineShield),
-                defaultLabelColor = new Color(0.3f, 0.7f, 1f),
-                isBad = false,
-                stages = new List<HediffStage>
-                {
-                    new HediffStage
-                    {
-                        capMods = new List<PawnCapacityModifier>
-                        {
-                            new PawnCapacityModifier { capacity = PawnCapacityDefOf.Moving, setMax = 0f }
-                        }
-                    }
-                }
-            };
-            DefDatabase<HediffDef>.Add(Hediff_DivineShield);
-
-            // Divine Blessing (temporary buff)
-            Hediff_DivineBlessing = new HediffDef
-            {
-                defName = "SRI_DivineBlessing",
-                label = "Divine Blessing",
-                description = "Blessed by the living god with enhanced abilities.",
-                hediffClass = typeof(HediffWithComps),
-                defaultLabelColor = new Color(1f, 0.95f, 0.5f),
-                isBad = false,
-                comps = new List<HediffCompProperties>
-                {
-                    new HediffCompProperties_Disappears { disappearsAfterTicks = new IntRange(30000, 30000), showRemainingTime = true }
-                },
-                stages = new List<HediffStage>
-                {
-                    new HediffStage
-                    {
-                        statOffsets = new List<StatModifier>
-                        {
-                            new StatModifier { stat = StatDefOf.WorkSpeedGlobal, value = 0.15f },
-                            new StatModifier { stat = StatDefOf.MoveSpeed, value = 0.5f },
-                            new StatModifier { stat = StatDefOf.MeleeDamageFactor, value = 0.2f },
-                            new StatModifier { stat = StatDefOf.ImmunityGainSpeed, value = 0.3f }
-                        }
-                    }
-                }
-            };
-            DefDatabase<HediffDef>.Add(Hediff_DivineBlessing);
-
-            // Resurrection Sickness
-            Hediff_ResurrectionSickness = new HediffDef
-            {
-                defName = "SRI_ResurrectionSickness",
-                label = "Resurrection Sickness",
-                description = "Recovering from being brought back from the dead.",
-                hediffClass = typeof(HediffWithComps),
-                defaultLabelColor = new Color(0.5f, 0.5f, 0.5f),
-                isBad = true,
-                comps = new List<HediffCompProperties>
-                {
-                    new HediffCompProperties_Disappears { disappearsAfterTicks = new IntRange(120000, 180000), showRemainingTime = true }
-                },
-                stages = new List<HediffStage>
-                {
-                    new HediffStage
-                    {
-                        statFactors = new List<StatModifier>
-                        {
-                            new StatModifier { stat = StatDefOf.MoveSpeed, value = 0.7f },
-                            new StatModifier { stat = StatDefOf.WorkSpeedGlobal, value = 0.5f }
-                        },
-                        capMods = new List<PawnCapacityModifier>
-                        {
-                            new PawnCapacityModifier { capacity = PawnCapacityDefOf.Consciousness, offset = -0.2f }
-                        }
-                    }
-                }
-            };
-            DefDatabase<HediffDef>.Add(Hediff_ResurrectionSickness);
-
-            // Ritual Exhaustion
-            Hediff_RitualExhaustion = new HediffDef
-            {
-                defName = "SRI_RitualExhaustion",
-                label = "Ritual Exhaustion",
-                description = "Completely drained from performing the resurrection ritual.",
-                hediffClass = typeof(HediffWithComps),
-                defaultLabelColor = new Color(0.6f, 0.4f, 0.6f),
-                isBad = true,
-                comps = new List<HediffCompProperties>
-                {
-                    new HediffCompProperties_Disappears { disappearsAfterTicks = new IntRange(60000, 90000), showRemainingTime = true }
-                },
-                stages = new List<HediffStage>
-                {
-                    new HediffStage
-                    {
-                        statFactors = new List<StatModifier>
-                        {
-                            new StatModifier { stat = StatDefOf.MoveSpeed, value = 0.5f },
-                            new StatModifier { stat = StatDefOf.WorkSpeedGlobal, value = 0.3f }
-                        },
-                        capMods = new List<PawnCapacityModifier>
-                        {
-                            new PawnCapacityModifier { capacity = PawnCapacityDefOf.Consciousness, offset = -0.3f }
-                        }
-                    }
-                }
-            };
-            DefDatabase<HediffDef>.Add(Hediff_RitualExhaustion);
-        }
-
-        static void CreateTraits()
-        {
-            // FIX: Moved 'commonality' inside TraitDegreeData
-            Trait_ReincarnatedGod = new TraitDef
-            {
-                defName = "SRI_ReincarnatedGod",
-                degreeDatas = new List<TraitDegreeData>
-                {
-                    new TraitDegreeData
-                    {
-                        label = "Reincarnated God",
-                        description = "A divine being reborn in mortal flesh.\n\n• Cannot use ranged weapons\n• Deflects projectiles (scales with slaves)\n• Gains power from devoted followers\n• Can use Divine Abilities",
-                        commonality = 0f // Correct location
-                    }
-                }
-            };
-            DefDatabase<TraitDef>.Add(Trait_ReincarnatedGod);
-        }
-
-        static void CreateThoughts()
-        {
-            Thought_SatisfiedByMaster = new ThoughtDef
-            {
-                defName = "SRI_SatisfiedByMaster",
-                durationDays = 1f,
-                stages = new List<ThoughtStage>
-                {
-                    new ThoughtStage { label = "Satisfied by master", baseMoodEffect = 5 }
-                }
-            };
-            DefDatabase<ThoughtDef>.Add(Thought_SatisfiedByMaster);
-
-            Thought_ForcedAffection = new ThoughtDef
-            {
-                defName = "SRI_ForcedAffection",
-                durationDays = 1f,
-                stages = new List<ThoughtStage>
-                {
-                    new ThoughtStage { label = "Forced affection", baseMoodEffect = -8 }
-                }
-            };
-            DefDatabase<ThoughtDef>.Add(Thought_ForcedAffection);
-
-            Thought_WitnessedDivineWrath = new ThoughtDef
-            {
-                defName = "SRI_WitnessedDivineWrath",
-                durationDays = 3f,
-                stages = new List<ThoughtStage>
-                {
-                    new ThoughtStage { label = "Witnessed divine wrath", baseMoodEffect = 10 }
-                }
-            };
-            DefDatabase<ThoughtDef>.Add(Thought_WitnessedDivineWrath);
-
-            Thought_ReceivedBlessing = new ThoughtDef
-            {
-                defName = "SRI_ReceivedBlessing",
-                durationDays = 5f,
-                stages = new List<ThoughtStage>
-                {
-                    new ThoughtStage { label = "Received divine blessing", baseMoodEffect = 15 }
-                }
-            };
-            DefDatabase<ThoughtDef>.Add(Thought_ReceivedBlessing);
-
-            Thought_GodResurrected = new ThoughtDef
-            {
-                defName = "SRI_GodResurrected",
-                durationDays = 15f,
-                stages = new List<ThoughtStage>
-                {
-                    new ThoughtStage { label = "Witnessed God's resurrection", baseMoodEffect = 30 }
-                }
-            };
-            DefDatabase<ThoughtDef>.Add(Thought_GodResurrected);
-        }
-
-        static void CreateScenPartDef()
-        {
-            ScenPart_GodSetup_Def = new ScenPartDef
-            {
-                defName = "SRI_ScenPart_GodSetup",
-                label = "God and Harem Setup",
-                description = "Configures the starting God and harem.",
-                scenPartClass = typeof(ScenPart_GodSetup),
-                category = ScenPartCategory.StartingImportant
-            };
-            DefDatabase<ScenPartDef>.Add(ScenPart_GodSetup_Def);
-        }
-
-        // ==================== UTILITY METHODS ====================
-        
-        public static int GetDevotionTier(Pawn pawn)
-        {
-            Hediff devotion = pawn.health?.hediffSet?.GetFirstHediffOfDef(Hediff_Devotion);
-            if (devotion == null) return 0;
-            
-            float severity = devotion.Severity;
-            if (severity >= DEVOTION_TIER_4) return 4;
-            if (severity >= DEVOTION_TIER_3) return 3;
-            if (severity >= DEVOTION_TIER_2) return 2;
-            if (severity >= DEVOTION_TIER_1) return 1;
-            return 0;
-        }
-
-        public static string GetDevotionTierName(int tier)
-        {
-            switch (tier)
-            {
-                case 0: return "Unwilling";
-                case 1: return "Obedient";
-                case 2: return "Devoted";
-                case 3: return "Fanatical";
-                case 4: return "Ascended";
-                default: return "Unknown";
-            }
-        }
-
-        public static bool IsGod(Pawn pawn)
-        {
-            return pawn?.story?.traits?.HasTrait(Trait_ReincarnatedGod) == true;
-        }
-
-        public static Pawn GetGodOnMap(Map map)
-        {
-            if (map == null) return null;
-            return map.mapPawns.FreeColonistsSpawned.FirstOrDefault(p => IsGod(p));
-        }
-
-        public static int CountDevotedSlaves(Map map, int minTier = 3)
-        {
-            if (map == null) return 0;
-            int count = 0;
-            foreach (Pawn slave in map.mapPawns.SlavesOfColonySpawned.ToList())
-            {
-                if (GetDevotionTier(slave) >= minTier) count++;
-            }
-            return count;
-        }
-
-        public static float CalculateAbilityPower(Pawn god, float basePower, float bonusPerDevoted)
-        {
-            if (god?.Map == null) return basePower;
-            
-            int tier3Count = 0;
-            int tier4Count = 0;
-            
-            foreach (Pawn slave in god.Map.mapPawns.SlavesOfColonySpawned.ToList())
-            {
-                int tier = GetDevotionTier(slave);
-                if (tier >= 4) tier4Count++;
-                else if (tier >= 3) tier3Count++;
-            }
-            
-            // Tier 4 counts double
-            return basePower + (tier3Count * bonusPerDevoted) + (tier4Count * bonusPerDevoted * 2f);
+            Scribe_Values.Look(ref enableAbilities, "abilities", true);
+            Scribe_Values.Look(ref enableResurrection, "resurrection", true);
+            Scribe_Values.Look(ref enableSpecializations, "specs", true);
+            Scribe_Values.Look(ref unlockSlaveWork, "unlockWork", true);
+            Scribe_Values.Look(ref showNotifications, "notifs", true);
+            Scribe_Values.Look(ref showOverlay, "overlay", true);
+            Scribe_Values.Look(ref showGodGlow, "glow", true);
+            Scribe_Values.Look(ref devotionRate, "devRate", 1f);
+            Scribe_Values.Look(ref cooldownMult, "cdMult", 1f);
+            Scribe_Values.Look(ref powerMult, "pwrMult", 1f);
         }
     }
 
-    // ======================================================================
-    // HEDIFF CLASSES
-    // ======================================================================
-
-    #region Hediff Classes
-
-    public class Hediff_DivineScaling : HediffWithComps
+    public class SRI_Mod : Mod
     {
-        public override bool ShouldRemove => false;
+        public static SRI_Settings S;
+        public SRI_Mod(ModContentPack c) : base(c) => S = GetSettings<SRI_Settings>();
+        public override string SettingsCategory() => "Slave Realism Improved";
 
-        public override string LabelInBrackets => "Slaves: " + (int)this.Severity;
-
-        public override string TipStringExtra
+        public override void DoSettingsWindowContents(Rect r)
         {
-            get
+            var L = new Listing_Standard();
+            L.Begin(r);
+            L.Label("═══ Features ═══");
+            L.CheckboxLabeled("Divine Abilities", ref S.enableAbilities);
+            L.CheckboxLabeled("Resurrection System", ref S.enableResurrection);
+            L.CheckboxLabeled("Slave Specializations", ref S.enableSpecializations);
+            L.CheckboxLabeled("Unlock Slave Work (Research, Art, etc)", ref S.unlockSlaveWork);
+            L.CheckboxLabeled("Tier-Up Notifications", ref S.showNotifications);
+            L.GapLine();
+            L.Label("═══ Balance ═══");
+            L.Label($"Devotion Growth: {S.devotionRate:P0}"); S.devotionRate = L.Slider(S.devotionRate, 0.1f, 3f);
+            L.Label($"Cooldown Multiplier: {S.cooldownMult:P0}"); S.cooldownMult = L.Slider(S.cooldownMult, 0.25f, 3f);
+            L.Label($"Ability Power: {S.powerMult:P0}"); S.powerMult = L.Slider(S.powerMult, 0.5f, 2f);
+            L.GapLine();
+            L.Label("═══ Visuals ═══");
+            L.CheckboxLabeled("Devotion Overlay on Slaves", ref S.showOverlay);
+            L.CheckboxLabeled("God Glow Effect", ref S.showGodGlow);
+            L.End();
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    //                              DEFINITIONS
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    [StaticConstructorOnStartup]
+    public static class Defs
+    {
+        // Jobs
+        public static JobDef Job_Lovin, Job_Punish, Job_Procure, Job_Attend, Job_Heal, Job_Smite, Job_Resurrect, Job_GatherCorpse;
+        
+        // Hediffs
+        public static HediffDef H_Stockholm, H_Rage, H_Punished, H_Healing, H_HeadConcubine, H_Divine, H_Devotion;
+        public static HediffDef H_Shield, H_Blessing, H_ResSick, H_Exhaust;
+        public static HediffDef H_Warrior, H_Healer, H_Scholar, H_Entertainer;
+        
+        // Other
+        public static TraitDef Trait_God;
+        public static ThoughtDef T_Satisfied, T_Forced, T_Wrath, T_Blessed, T_Resurrected, T_ServedMaster, T_ReceivedService;
+        
+        // Constants
+        public const float T1 = 0.15f, T2 = 0.35f, T3 = 0.60f, T4 = 0.90f;
+        public const int CD_Smite = 2500, CD_Calm = 10000, CD_Bless = 20000, CD_Wrath = 60000;
+
+        static Defs()
+        {
+            Log.Message("[SRI] Initializing...");
+            
+            // Jobs
+            Job_Lovin = MkJob("SRI_Lovin", typeof(JD_Lovin), "making love.");
+            Job_Punish = MkJob("SRI_Punish", typeof(JD_Punish), "punishing.", true);
+            Job_Procure = MkJob("SRI_Procure", typeof(JD_Procure), "procuring.");
+            Job_Attend = MkJob("SRI_Attend", typeof(JD_Attend), "attending.");
+            Job_Heal = MkJob("SRI_Heal", typeof(JD_Heal), "healing ritual.");
+            Job_Smite = MkJob("SRI_Smite", typeof(JD_Smite), "divine wrath.");
+            Job_Resurrect = MkJob("SRI_Resurrect", typeof(JD_Resurrect), "resurrection.");
+            Job_GatherCorpse = MkJob("SRI_Gather", typeof(JD_Gather), "gathering.");
+
+            // Core Hediffs
+            H_Stockholm = MkHediff("SRI_Stockholm", "Stockholm Syndrome", "Bonded to master.", typeof(HediffWithComps), Color.cyan,
+                MkStage(statOff: new() { (StatDefOf.GlobalLearningFactor, 0.2f) }), new() { new HediffCompProperties { compClass = typeof(HC_Stockholm) } });
+            
+            H_Rage = MkHediff("SRI_Rage", "Protective Rage", "Protecting master!", typeof(HediffWithComps), Color.red,
+                MkStage(pain: 0.1f, statOff: new() { (StatDefOf.MoveSpeed, 3f), (StatDefOf.MeleeHitChance, 0.3f), (StatDefOf.MeleeDodgeChance, 0.3f), (StatDefOf.MeleeDamageFactor, 1.5f) }),
+                new() { new HediffCompProperties_Disappears { disappearsAfterTicks = new IntRange(2500, 5000), showRemainingTime = true } });
+            
+            H_Punished = MkHediff("SRI_Punished", "Punished", "Pain.", typeof(HediffWithComps), new Color(0.8f, 0.4f, 0), true,
+                MkStage(pain: 0.35f), new() { new HediffCompProperties_Disappears { disappearsAfterTicks = new IntRange(10000, 20000), showRemainingTime = true } });
+            
+            H_Healing = MkHediff("SRI_Healing", "Healing Touch", "Faster recovery.", typeof(HediffWithComps), Color.green,
+                MkStage(statOff: new() { (StatDefOf.ImmunityGainSpeed, 0.5f), (StatDefOf.InjuryHealingFactor, 0.5f) }),
+                new() { new HediffCompProperties_Disappears { disappearsAfterTicks = new IntRange(15000, 30000), showRemainingTime = true } });
+            
+            H_HeadConcubine = MkHediff("SRI_HeadConc", "Head Concubine", "Favorite.", typeof(HediffWithComps), new Color(1, 0.8f, 0),
+                MkStage(statOff: new() { (StatDefOf.SocialImpact, 0.2f) }));
+            
+            H_Divine = MkHediff("SRI_Divine", "Divine Power", "Power from followers.", typeof(Hediff_Divine), new Color(1, 0.9f, 0.2f));
+            H_Devotion = MkHediff("SRI_Devotion", "Devotion", "Connection to the God.", typeof(Hediff_Devotion), new Color(0.9f, 0.7f, 1));
+            H_Shield = MkHediff("SRI_Shield", "Divine Shield", "Protecting God.", typeof(Hediff_Shield), new Color(0.5f, 0.8f, 1));
+            
+            H_Blessing = MkHediff("SRI_Blessing", "Divine Blessing", "Blessed.", typeof(HediffWithComps), new Color(1, 1, 0.6f),
+                MkStage(statOff: new() { (StatDefOf.WorkSpeedGlobal, 0.15f), (StatDefOf.MoveSpeed, 0.5f), (StatDefOf.MeleeDamageFactor, 0.2f) }),
+                new() { new HediffCompProperties_Disappears { disappearsAfterTicks = new IntRange(30000, 60000), showRemainingTime = true } });
+            
+            H_ResSick = MkHediff("SRI_ResSick", "Resurrection Sickness", "Weakened.", typeof(HediffWithComps), Color.gray, true,
+                MkStage(statFac: new() { (StatDefOf.MoveSpeed, 0.5f), (StatDefOf.MeleeDamageFactor, 0.5f) }),
+                new() { new HediffCompProperties_Disappears { disappearsAfterTicks = new IntRange(60000, 90000), showRemainingTime = true } });
+            
+            H_Exhaust = MkHediff("SRI_Exhaust", "Ritual Exhaustion", "Drained.", typeof(HediffWithComps), Color.gray, true,
+                MkStage(capMod: new() { (PawnCapacityDefOf.Consciousness, -0.3f) }),
+                new() { new HediffCompProperties_Disappears { disappearsAfterTicks = new IntRange(30000, 45000), showRemainingTime = true } });
+
+            // Specializations
+            H_Warrior = MkHediff("SRI_Warrior", "Warrior", "+50% melee damage.", typeof(HediffWithComps), Color.red,
+                MkStage(statOff: new() { (StatDefOf.MeleeDamageFactor, 0.5f), (StatDefOf.MeleeDodgeChance, 0.2f), (StatDefOf.MeleeHitChance, 0.15f) }));
+            H_Healer = MkHediff("SRI_Healer", "Healer", "+30% tend quality.", typeof(HediffWithComps), Color.green,
+                MkStage(statOff: new() { (StatDefOf.MedicalTendQuality, 0.3f), (StatDefOf.MedicalSurgerySuccessChance, 0.3f) }));
+            H_Scholar = MkHediff("SRI_Scholar", "Scholar", "+40% research.", typeof(HediffWithComps), Color.blue,
+                MkStage(statOff: new() { (StatDefOf.ResearchSpeed, 0.4f), (StatDefOf.GlobalLearningFactor, 0.3f) }));
+            H_Entertainer = MkHediff("SRI_Entertainer", "Entertainer", "+30% social.", typeof(HediffWithComps), Color.magenta,
+                MkStage(statOff: new() { (StatDefOf.SocialImpact, 0.3f), (StatDefOf.JoyGainFactor, 0.2f) }));
+
+            // Trait
+            Trait_God = new TraitDef { defName = "SRI_God", degreeDatas = new() { new TraitDegreeData { label = "Reincarnated God", description = "Divine being. Reflects bullets. No ranged weapons." } } };
+            DefDatabase<TraitDef>.Add(Trait_God);
+
+            // Thoughts
+            T_Satisfied = MkThought("SRI_Satisfied", "Satisfied", 5, 1);
+            T_Forced = MkThought("SRI_Forced", "Forced", -8, 1);
+            T_Wrath = MkThought("SRI_Wrath", "Witnessed wrath", 10, 3);
+            T_Blessed = MkThought("SRI_Blessed", "Blessed", 15, 5);
+            T_Resurrected = MkThought("SRI_Resurrected", "God returned!", 30, 15);
+            T_ServedMaster = MkThought("SRI_ServedMaster", "Served my Master", 8, 2);
+            T_ReceivedService = MkThought("SRI_ReceivedService", "Received devoted service", 10, 2);
+
+            var harmony = new Harmony("com.sri");
+            harmony.PatchAll();
+            
+            // Manual patches for methods that may have changed signatures
+            try
             {
-                int slaves = (int)this.Severity;
-                if (slaves == 0)
-                    return "No slaves - no divine power.\n• Bullet Deflection: 20%";
-
-                float deflectChance = Mathf.Min(0.20f + (slaves * 0.05f), 0.80f) * 100f;
-
-                // Updated format string with new stats (Dodge, Work Speed, Negotiation)
-                return string.Format(
-                    "Bonuses from {0} slave{1}:\n" +
-                    "• Move Speed: +{2}%\n" +
-                    "• Melee Damage: +{3}%\n" +
-                    "• Melee Dodge: +{4}%\n" +       
-                    "• Global Work Speed: +{5}%\n" + 
-                    "• Research Speed: +{6}%\n" +
-                    "• Negotiation: +{7}%\n" +       
-                    "• Psychic Sensitivity: +{8}%\n" +
-                    "• Bullet Deflection: {9}%",
-                    slaves, slaves == 1 ? "" : "s",
-                    (slaves * 5).ToString("F0"),     // Move Speed
-                    (slaves * 10).ToString("F0"),    // Melee Dmg
-                    (slaves * 5).ToString("F0"),     // Dodge 
-                    (slaves * 10).ToString("F0"),    // Work Speed 
-                    (slaves * 10).ToString("F0"),    // Research
-                    (slaves * 10).ToString("F0"),    // Negotiation 
-                    (slaves * 10).ToString("F0"),    // Psychic
-                    deflectChance.ToString("F0")     // Deflection
-                );
+                var bedMethod = AccessTools.GetDeclaredMethods(typeof(RestUtility)).Where(m => m.Name == "IsValidBedFor").OrderByDescending(m => m.GetParameters().Length).FirstOrDefault();
+                if (bedMethod != null) harmony.Patch(bedMethod, prefix: new HarmonyMethod(typeof(Patch_BedValid), "Prefix"));
             }
+            catch (Exception e) { Log.Warning($"[SRI] Bed patch skipped: {e.Message}"); }
+            
+            try
+            {
+                var equipMethod = AccessTools.Method(typeof(EquipmentUtility), "CanEquip", new[] { typeof(Thing), typeof(Pawn), typeof(string).MakeByRefType(), typeof(bool) });
+                if (equipMethod != null) harmony.Patch(equipMethod, prefix: new HarmonyMethod(typeof(Patch_NoGuns), "Prefix"));
+            }
+            catch (Exception e) { Log.Warning($"[SRI] Gun restriction patch skipped: {e.Message}"); }
+            
+            Log.Message("[SRI] Done!");
         }
 
-        public override void Tick()
+        // Helper methods
+        static JobDef MkJob(string n, Type d, string r, bool w = false) { var j = new JobDef { defName = n, driverClass = d, reportString = r, playerInterruptible = true, alwaysShowWeapon = w, casualInterruptible = false, suspendable = false }; DefDatabase<JobDef>.Add(j); return j; }
+        
+        static HediffStage MkStage(float pain = 0, List<(StatDef, float)> statOff = null, List<(StatDef, float)> statFac = null, List<(PawnCapacityDef, float)> capMod = null)
         {
-            base.Tick();
-            if (pawn.IsHashIntervalTick(200))
-            {
-                // FIX: Self-Cleaning. If I'm not a God (no trait), remove this power immediately.
-                if (!SRI_Main.IsGod(pawn))
-                {
-                    pawn.health.RemoveHediff(this);
-                    return;
-                }
+            var s = new HediffStage { painOffset = pain };
+            if (statOff != null) { s.statOffsets = new(); foreach (var (st, v) in statOff) s.statOffsets.Add(new StatModifier { stat = st, value = v }); }
+            if (statFac != null) { s.statFactors = new(); foreach (var (st, v) in statFac) s.statFactors.Add(new StatModifier { stat = st, value = v }); }
+            if (capMod != null) { s.capMods = new(); foreach (var (c, v) in capMod) s.capMods.Add(new PawnCapacityModifier { capacity = c, offset = v }); }
+            return s;
+        }
+        
+        static HediffDef MkHediff(string n, string l, string d, Type c, Color col, bool bad = false, HediffStage stage = null, List<HediffCompProperties> comps = null)
+        {
+            var h = new HediffDef { defName = n, label = l, description = d, hediffClass = c, defaultLabelColor = col, isBad = bad };
+            if (stage != null) h.stages = new() { stage };
+            if (comps != null) h.comps = comps;
+            DefDatabase<HediffDef>.Add(h);
+            return h;
+        }
+        static HediffDef MkHediff(string n, string l, string d, Type c, Color col, HediffStage stage, List<HediffCompProperties> comps = null) => MkHediff(n, l, d, c, col, false, stage, comps);
+        
+        static ThoughtDef MkThought(string n, string l, int mood, float days) { var t = new ThoughtDef { defName = n, durationDays = days, stages = new() { new ThoughtStage { label = l, baseMoodEffect = mood } } }; DefDatabase<ThoughtDef>.Add(t); return t; }
 
-                int slaves = 0;
-                if (pawn.Map != null)
-                    slaves = pawn.Map.mapPawns.SlavesOfColonySpawned.Count;
-                this.Severity = (float)slaves;
-            }
+        // Utility
+        public static bool IsGod(Pawn p) => p?.story?.traits?.HasTrait(Trait_God) == true;
+        public static int Tier(Pawn p) { var h = p?.health?.hediffSet?.GetFirstHediffOfDef(H_Devotion); if (h == null) return 0; float s = h.Severity; return s >= T4 ? 4 : s >= T3 ? 3 : s >= T2 ? 2 : s >= T1 ? 1 : 0; }
+        public static string TierName(int t) => t switch { 4 => "Zealot", 3 => "Devoted", 2 => "Faithful", 1 => "Initiate", _ => "None" };
+        public static Color TierColor(int t) => t switch { 4 => Color.yellow, 3 => Color.cyan, 2 => Color.green, 1 => Color.white, _ => Color.gray };
+        public static int CD(int b) => (int)(b * SRI_Mod.S.cooldownMult);
+        // Use CACHED tier counts - NO pawn list iteration!
+        public static float Pwr(Pawn g, float b, float bonus) { int t3 = GC.I?.CachedT3Count ?? 0; int t4 = GC.I?.CachedT4Count ?? 0; return (b + t3 * bonus + t4 * bonus * 2) * SRI_Mod.S.powerMult; }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    //                              HEDIFFS
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    public class Hediff_Divine : HediffWithComps
+    {
+        private bool markedForRemoval = false;
+        public override bool ShouldRemove => markedForRemoval;
+        public override string LabelInBrackets => $"{(int)Severity} slaves";
+        public override string TipStringExtra => $"+{(int)Severity * 5}% move, +{(int)Severity * 10}% melee/research\nDeflect: {Mathf.Min(20 + (int)Severity * 5, 80)}%";
+        public override void Tick() 
+        { 
+            base.Tick(); 
+            if (pawn.IsHashIntervalTick(199)) 
+            { 
+                // Use cached check - NO pawn list iteration during tick
+                if (GC.I == null || !GC.I.IsGodCached(pawn)) { markedForRemoval = true; return; } 
+                // Use cached slave count - NO pawn list iteration
+                Severity = GC.I?.CachedSlaveCount ?? 0; 
+            } 
         }
     }
 
     public class Hediff_Devotion : HediffWithComps
     {
-        private int cachedTier = -1;
-        private Pawn cachedMaster = null;
-
-        public int Tier
-        {
-            get
-            {
-                if (cachedTier < 0) UpdateTier();
-                return cachedTier;
-            }
-        }
-
-        public override string LabelInBrackets => SRI_Main.GetDevotionTierName(Tier) + " (" + (Severity * 100f).ToString("F0") + "%)";
-
-        public override string TipStringExtra
-        {
-            get
-            {
-                string tip = "Devotion Tier: " + SRI_Main.GetDevotionTierName(Tier) + "\n";
-                tip += "Progress: " + (Severity * 100f).ToString("F1") + "%\n\n";
-                
-                if (cachedMaster != null)
-                    tip += "Master: " + cachedMaster.LabelShort + "\n";
-                
-                tip += "Proximity Buffs (when near master):\n";
-                tip += GetProximityBonusDescription();
-                
-                if (Tier >= 3)
-                    tip += "\n\n• Can use Divine Shield";
-                
-                return tip;
-            }
-        }
-
-        private string GetProximityBonusDescription()
-        {
-            switch (Tier)
-            {
-                case 1: return "• Work Speed: +5%\n• Move Speed: +5%\n• Melee Damage: +5%";
-                case 2: return "• Work Speed: +10%\n• Move Speed: +10%\n• Melee Damage: +10%\n• Melee Dodge: +5%";
-                case 3: return "• Work Speed: +15%\n• Move Speed: +15%\n• Melee Damage: +20%\n• Melee Dodge: +10%\n• Pain Threshold: +20%";
-                case 4: return "• Work Speed: +25%\n• Move Speed: +20%\n• Melee Damage: +30%\n• Melee Dodge: +15%\n• Pain Threshold: +30%\n• Consciousness: +10%";
-                default: return "• None (increase devotion)";
-            }
-        }
-
-        private void UpdateTier()
-        {
-            if (Severity >= SRI_Main.DEVOTION_TIER_4) cachedTier = 4;
-            else if (Severity >= SRI_Main.DEVOTION_TIER_3) cachedTier = 3;
-            else if (Severity >= SRI_Main.DEVOTION_TIER_2) cachedTier = 2;
-            else if (Severity >= SRI_Main.DEVOTION_TIER_1) cachedTier = 1;
-            else cachedTier = 0;
-        }
-
+        private Pawn master; private int lastTier = -1; private int cachedMasterId = -1;
+        public override string LabelInBrackets => $"{Defs.TierName(Defs.Tier(pawn))} {Severity * 100:F0}%";
+        public override string TipStringExtra { get { int t = Defs.Tier(pawn); return $"Tier: {Defs.TierName(t)}\nMaster: {master?.LabelShort ?? "None"}\nProximity buffs: +{t * 5}% work/move/melee"; } }
+        
         public override void Tick()
         {
             base.Tick();
-            
-            if (!pawn.IsHashIntervalTick(250)) return; // Every ~10 seconds
-            
-            // Update master reference
-            if (SRI_GameComponent.Instance != null)
+            if (!pawn.IsHashIntervalTick(251)) return;
+            try
             {
-                cachedMaster = SRI_GameComponent.Instance.GetMasterOf(pawn);
-            }
-            
-            // Grow devotion
-            GrowDevotion();
-            
-            // Update tier cache
-            UpdateTier();
-        }
-
-        private void GrowDevotion()
-        {
-            if (cachedMaster == null || cachedMaster.Dead) return;
-            
-            float growthRate = 0f;
-            
-            // Base growth: near master
-            if (pawn.Map == cachedMaster.Map && pawn.Position.InHorDistOf(cachedMaster.Position, 15f))
-            {
-                growthRate += 0.00008f; // ~0.5% per hour when nearby
-            }
-            
-            // Bonus: Has Stockholm Syndrome (2x growth)
-            if (pawn.health.hediffSet.HasHediff(SRI_Main.Hediff_Stockholm))
-            {
-                growthRate *= 2f;
-            }
-            
-            // Bonus: Good mood
-            if (pawn.needs?.mood?.CurLevel > 0.6f)
-            {
-                growthRate *= 1.2f;
-            }
-            
-            // Apply growth (severity can only increase)
-            if (growthRate > 0 && Severity < 1f)
-            {
-                Severity = Mathf.Min(1f, Severity + growthRate);
-            }
-        }
-
-        public void AddDevotion(float amount)
-        {
-            if (amount > 0)
-            {
-                Severity = Mathf.Min(1f, Severity + amount);
-                UpdateTier();
-            }
-        }
-
-        public override void ExposeData()
-        {
-            base.ExposeData();
-            Scribe_References.Look(ref cachedMaster, "cachedMaster");
-        }
-    }
-
-    public class Hediff_DivineShield : HediffWithComps
-    {
-        public Pawn protectedMaster;
-        public bool shieldReady = true;
-        private int shieldCooldownTick = 0;
-
-        public override string LabelInBrackets
-        {
-            get
-            {
-                if (!shieldReady)
+                // Use ONLY cached data - absolutely NO pawn list iteration during tick
+                int masterId = GC.I?.GetCachedMasterId(pawn) ?? -1;
+                
+                // Get cached master pawn reference from GC (updated safely in GameComponentTick)
+                master = GC.I?.GetCachedMasterPawn(masterId);
+                cachedMasterId = masterId;
+                
+                // Check proximity using cached master reference
+                if (master != null && !master.Dead && pawn.Map == master.Map && pawn.Position.InHorDistOf(master.Position, 15f))
                 {
-                    int remaining = shieldCooldownTick - Find.TickManager.TicksGame;
-                    if (remaining > 0)
-                        return "Cooldown: " + (remaining / 2500f).ToString("F1") + "h";
+                    float r = 0.00008f * SRI_Mod.S.devotionRate;
+                    if (pawn.health.hediffSet.HasHediff(Defs.H_Stockholm)) r *= 2;
+                    if (pawn.needs?.mood?.CurLevel > 0.6f) r *= 1.2f;
+                    Severity = Mathf.Min(1, Severity + r);
                 }
-                return shieldReady ? "Ready" : "Recovering";
+                
+                int t = Defs.Tier(pawn);
+                if (t > lastTier && lastTier >= 0 && SRI_Mod.S.showNotifications) 
+                    Messages.Message($"{pawn.LabelShort} → {Defs.TierName(t)}!", pawn, MessageTypeDefOf.PositiveEvent);
+                lastTier = t;
             }
+            catch { }
         }
+        
+        public void Add(float a) => Severity = Mathf.Min(1, Severity + a);
+        public override void ExposeData() { base.ExposeData(); Scribe_References.Look(ref master, "m"); Scribe_Values.Look(ref cachedMasterId, "mid", -1); }
+    }
 
-        public override void Tick()
-        {
-            base.Tick();
-            
-            // Check cooldown
-            if (!shieldReady && Find.TickManager.TicksGame >= shieldCooldownTick)
-            {
-                shieldReady = true;
-                Messages.Message(pawn.LabelShort + "'s Divine Shield is ready!", pawn, MessageTypeDefOf.PositiveEvent, false);
-            }
-            
-            // Remove if master dead or too far
-            if (protectedMaster == null || protectedMaster.Dead || 
-                !pawn.Position.InHorDistOf(protectedMaster.Position, 10f))
-            {
-                pawn.health.RemoveHediff(this);
-            }
+    public class Hediff_Shield : HediffWithComps
+    {
+        public Pawn master; public bool ready = true; private int cdTick;
+        private bool markedForRemoval = false;
+        public override bool ShouldRemove => markedForRemoval;
+        public override string LabelInBrackets => ready ? "Ready" : $"CD {(cdTick - Find.TickManager.TicksGame) / 2500f:F1}h";
+        public override void Tick() 
+        { 
+            base.Tick(); 
+            if (!ready && Find.TickManager.TicksGame >= cdTick) ready = true; 
+            if (master == null || master.Dead || !pawn.Position.InHorDistOf(master.Position, 15f)) 
+                markedForRemoval = true; 
         }
+        public void Use() { ready = false; cdTick = Find.TickManager.TicksGame + Defs.CD(5000); }
+        public override void ExposeData() { base.ExposeData(); Scribe_References.Look(ref master, "m"); Scribe_Values.Look(ref ready, "r", true); Scribe_Values.Look(ref cdTick, "cd"); }
+    }
 
-        public bool TryBlockAttack(DamageInfo dinfo, out float damageToSlave)
+    public class HC_Stockholm : HediffComp
+    {
+        public override void CompPostTick(ref float s)
         {
-            damageToSlave = 0f;
-            
-            if (!shieldReady) return false;
-            if (pawn.Dead || pawn.Downed) return false;
-            
-            // Block the attack!
-            shieldReady = false;
-            shieldCooldownTick = Find.TickManager.TicksGame + SRI_Main.COOLDOWN_DIVINE_SHIELD;
-            
-            // Slave takes 20% of blocked damage
-            damageToSlave = dinfo.Amount * 0.2f;
-            
-            // Visual feedback
-            MoteMaker.ThrowText(pawn.DrawPos, pawn.Map, "SHIELD!", new Color(0.3f, 0.7f, 1f));
-            FleckMaker.Static(pawn.Position, pawn.Map, FleckDefOf.PsycastAreaEffect, 2f);
-            SoundDefOf.EnergyShield_AbsorbDamage.PlayOneShot(SoundInfo.InMap(new TargetInfo(pawn.Position, pawn.Map)));
-            
-            return true;
-        }
-
-        public override void ExposeData()
-        {
-            base.ExposeData();
-            Scribe_References.Look(ref protectedMaster, "protectedMaster");
-            Scribe_Values.Look(ref shieldReady, "shieldReady", true);
-            Scribe_Values.Look(ref shieldCooldownTick, "shieldCooldownTick", 0);
+            if (!Pawn.IsHashIntervalTick(2500) || !ModsConfig.IdeologyActive) return;
+            var ideo = Faction.OfPlayer?.ideos?.PrimaryIdeo;
+            if (ideo != null && Pawn.Ideo != ideo) { Pawn.ideo.OffsetCertainty(-0.01f); if (Pawn.ideo.Certainty <= 0.01f) { Pawn.ideo.SetIdeo(ideo); Pawn.ideo.OffsetCertainty(0.5f); Messages.Message($"{Pawn.LabelShort} converted!", Pawn, MessageTypeDefOf.PositiveEvent); } }
         }
     }
 
-    public class HediffComp_RageSustain : HediffComp
+    // ══════════════════════════════════════════════════════════════════════════════
+    //                              GAME COMPONENT
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    public class GC : GameComponent
     {
-        public override void CompPostTick(ref float severityAdjustment)
-        {
-            if (Pawn.IsHashIntervalTick(60))
-            {
-                if (Pawn.Drafted || (Pawn.CurJob != null && Pawn.CurJob.def == JobDefOf.AttackMelee))
-                {
-                    HediffComp_Disappears d = parent.TryGetComp<HediffComp_Disappears>();
-                    if (d != null) d.ticksToDisappear = 5000;
-                }
-            }
-        }
-    }
-
-    public class HediffComp_StockholmConversion : HediffComp
-    {
-        public override void CompPostTick(ref float severityAdjustment)
-        {
-            if (Pawn.IsHashIntervalTick(2500) && ModsConfig.IdeologyActive && Pawn.Ideo != null)
-            {
-                Ideo playerIdeo = Faction.OfPlayer?.ideos?.PrimaryIdeo;
-                if (playerIdeo != null && Pawn.Ideo != playerIdeo)
-                {
-                    Pawn.ideo.OffsetCertainty(-0.00833f);
-                    if (Pawn.ideo.Certainty <= 0.01f)
-                    {
-                        Pawn.ideo.SetIdeo(playerIdeo);
-                        Pawn.ideo.OffsetCertainty(0.5f);
-                        Messages.Message(Pawn.LabelShort + " has been converted to " + playerIdeo.name + " through Stockholm Syndrome.", Pawn, MessageTypeDefOf.PositiveEvent, true);
-                    }
-                }
-            }
-        }
-    }
-
-    #endregion
-
-    // ======================================================================
-    // GAME COMPONENT
-    // ======================================================================
-
-    #region Game Component
-
-    public class SRI_GameComponent : GameComponent
-    {
-        public static SRI_GameComponent Instance;
+        public static GC I;
+        HashSet<int> hybridBeds = new(); Dictionary<int, int> slaveMap = new(), dailyLovin = new();
+        Dictionary<int, int> cdPunish = new(), cdSmite = new(), cdCalm = new(), cdBless = new(), cdWrath = new();
+        Dictionary<int, int> godDeaths = new(), corpseHP = new();
+        List<(Pawn, HediffDef, bool)> deferred = new();
+        int lastDay, lastHeal;
         
-        // Existing data
-        private HashSet<int> hybridBedIDs = new HashSet<int>();
-        private Dictionary<int, int> punishmentCooldowns = new Dictionary<int, int>();
-        private Dictionary<int, int> slaveToMasterMap = new Dictionary<int, int>();
-        private Dictionary<int, int> dailyLovinCount = new Dictionary<int, int>();
-        private int lastDayReset = 0;
-        
-        // Track last healing ritual day to limit frequency
-        private int lastHealingRitualDay = -1;
+        // CACHE - Updated only in GameComponentTick, read by hediffs
+        public int CachedSlaveCount { get; private set; } = 0;
+        Dictionary<int, int> cachedMasterIds = new(); // slaveId -> masterId
+        HashSet<int> cachedGodIds = new();
+        bool cacheValid = false;
 
-        // Ability cooldowns
-        private Dictionary<int, int> smiteCooldowns = new Dictionary<int, int>();
-        private Dictionary<int, int> massCalmCooldowns = new Dictionary<int, int>();
-        private Dictionary<int, int> blessingCooldowns = new Dictionary<int, int>();
-        private Dictionary<int, int> wrathCooldowns = new Dictionary<int, int>();
-        
-        // Resurrection tracking
-        private Dictionary<int, int> godDeathTicks = new Dictionary<int, int>(); 
-        private Dictionary<int, List<Thing>> gatheredCorpses = new Dictionary<int, List<Thing>>(); 
-        
-        // Divine Shield tracking
-        private Dictionary<int, int> shieldCooldowns = new Dictionary<int, int>(); 
-
-        public SRI_GameComponent(Game game) { Instance = this; }
-
-        public override void FinalizeInit() { Instance = this; }
+        public GC(Game g) => I = this;
+        public override void FinalizeInit() => I = this;
 
         public override void GameComponentTick()
         {
-            int day = GenLocalDate.DayOfYear(Find.CurrentMap);
-            if (day != lastDayReset)
+            // Apply deferred from PREVIOUS tick first (safe - new tick frame)
+            if (pendingApply)
             {
-                dailyLovinCount.Clear();
-                lastDayReset = day;
-                UpdateHeadConcubines();
-            }
-
-            if (Find.TickManager.TicksGame % 2500 == 0)
-            {
-                ProcessAutoEvents();
-                ProcessGodAura();
-                CleanupExpiredResurrections();
-            }
-        }
-
-        // ==================== MASTER/CONCUBINE SYSTEM ====================
-
-        public void SetConcubine(Pawn slave, Pawn master)
-        {
-            int masterId = master != null ? master.thingIDNumber : -1;
-            if (slaveToMasterMap.ContainsKey(slave.thingIDNumber))
-                slaveToMasterMap[slave.thingIDNumber] = masterId;
-            else
-                slaveToMasterMap.Add(slave.thingIDNumber, masterId);
-            
-            // Initialize devotion if needed
-            if (master != null && !slave.health.hediffSet.HasHediff(SRI_Main.Hediff_Devotion))
-            {
-                slave.health.AddHediff(SRI_Main.Hediff_Devotion);
+                pendingApply = false;
+                ApplyAllDeferred();
             }
             
-            UpdateHeadConcubines();
-        }
-
-        public bool IsConcubineOf(Pawn slave, Pawn master)
-        {
-            if (slaveToMasterMap.TryGetValue(slave.thingIDNumber, out int masterId))
-                return masterId == master.thingIDNumber;
-            return false;
-        }
-
-        public Pawn GetMasterOf(Pawn slave)
-        {
-            if (!slaveToMasterMap.TryGetValue(slave.thingIDNumber, out int masterId) || masterId == -1)
-                return null;
+            // Update cache (read only - safe)
+            UpdateCache();
             
-            if (slave.Map == null) return null;
-            return slave.Map.mapPawns.FreeColonistsSpawned.FirstOrDefault(p => p.thingIDNumber == masterId);
-        }
-
-        public List<Pawn> GetConcubinesOf(Pawn master)
-        {
-            List<Pawn> concubines = new List<Pawn>();
-            if (master?.Map == null) return concubines;
-            
-            foreach (Pawn slave in master.Map.mapPawns.SlavesOfColonySpawned.ToList())
+            try
             {
-                if (IsConcubineOf(slave, master))
-                    concubines.Add(slave);
+                var m = Find.CurrentMap; if (m == null) return;
+                int d = GenLocalDate.DayOfYear(m);
+                if (d != lastDay) { dailyLovin.Clear(); lastDay = d; QueueUpdateHeads(m); }
+                if (Find.TickManager.TicksGame % 2503 == 0) { QueueProcessAura(m); QueueProcessAuto(m); }
             }
-            return concubines;
-        }
-
-        // ==================== ABILITY COOLDOWNS ====================
-
-        public bool IsAbilityReady(Pawn god, string ability)
-        {
-            Dictionary<int, int> cooldowns = GetCooldownDict(ability);
-            if (cooldowns == null) return true;
+            catch (Exception e) { Log.ErrorOnce($"[SRI] {e.Message}", 95847); }
             
-            if (!cooldowns.TryGetValue(god.thingIDNumber, out int unlockTick))
-                return true;
-            
-            return Find.TickManager.TicksGame >= unlockTick;
-        }
-
-        public int GetAbilityCooldownRemaining(Pawn god, string ability)
-        {
-            Dictionary<int, int> cooldowns = GetCooldownDict(ability);
-            if (cooldowns == null) return 0;
-            
-            if (!cooldowns.TryGetValue(god.thingIDNumber, out int unlockTick))
-                return 0;
-            
-            return Mathf.Max(0, unlockTick - Find.TickManager.TicksGame);
-        }
-
-        public void SetAbilityCooldown(Pawn god, string ability, int cooldownTicks)
-        {
-            Dictionary<int, int> cooldowns = GetCooldownDict(ability);
-            if (cooldowns == null) return;
-            
-            int unlockTick = Find.TickManager.TicksGame + cooldownTicks;
-            if (cooldowns.ContainsKey(god.thingIDNumber))
-                cooldowns[god.thingIDNumber] = unlockTick;
-            else
-                cooldowns.Add(god.thingIDNumber, unlockTick);
-        }
-
-        private Dictionary<int, int> GetCooldownDict(string ability)
-        {
-            switch (ability)
+            // Mark for application NEXT tick (not this tick!)
+            if (deferred.Count > 0 || deferredActions.Count > 0)
             {
-                case "Smite": return smiteCooldowns;
-                case "MassCalm": return massCalmCooldowns;
-                case "Blessing": return blessingCooldowns;
-                case "Wrath": return wrathCooldowns;
-                default: return null;
+                pendingApply = true;
             }
         }
-
-        // ==================== DIVINE SHIELD ====================
-
-        public bool IsShieldReady(Pawn slave)
-        {
-            if (!shieldCooldowns.TryGetValue(slave.thingIDNumber, out int unlockTick))
-                return true;
-            return Find.TickManager.TicksGame >= unlockTick;
-        }
-
-        public void SetShieldCooldown(Pawn slave)
-        {
-            int unlockTick = Find.TickManager.TicksGame + SRI_Main.COOLDOWN_DIVINE_SHIELD;
-            if (shieldCooldowns.ContainsKey(slave.thingIDNumber))
-                shieldCooldowns[slave.thingIDNumber] = unlockTick;
-            else
-                shieldCooldowns.Add(slave.thingIDNumber, unlockTick);
-        }
-
-        // ==================== RESURRECTION ====================
-
-        public void RegisterGodDeath(Pawn god)
-        {
-            if (god == null) return;
-            godDeathTicks[god.thingIDNumber] = Find.TickManager.TicksGame;
-            gatheredCorpses[god.thingIDNumber] = new List<Thing>();
-            
-            Messages.Message("The God has fallen! Devoted followers may attempt resurrection within 3 days.", MessageTypeDefOf.ThreatBig, true);
-        }
-
-        public bool CanResurrect(Pawn god)
-        {
-            if (god == null || !god.Dead) return false;
-            
-            if (!godDeathTicks.TryGetValue(god.thingIDNumber, out int deathTick))
-                return false;
-            
-            // Check time limit
-            if (Find.TickManager.TicksGame - deathTick > SRI_Main.RESURRECTION_TIME_LIMIT)
-                return false;
-            
-            // Check corpses
-            if (!gatheredCorpses.TryGetValue(god.thingIDNumber, out List<Thing> corpses))
-                return false;
-            
-            return corpses.Count >= SRI_Main.MIN_CORPSES_FOR_RESURRECTION;
-        }
-
-        public void AddCorpseForResurrection(Pawn god, Thing corpse)
-        {
-            if (!gatheredCorpses.ContainsKey(god.thingIDNumber))
-                gatheredCorpses[god.thingIDNumber] = new List<Thing>();
-            
-            gatheredCorpses[god.thingIDNumber].Add(corpse);
-        }
-
-        public float CalculateResurrectionHP(Pawn god)
-        {
-            if (!gatheredCorpses.TryGetValue(god.thingIDNumber, out List<Thing> corpses))
-                return 0f;
-            
-            float totalHP = 0f;
-            foreach (Thing corpse in corpses)
-            {
-                if (corpse is Corpse c && c.InnerPawn != null)
-                {
-                    Pawn p = c.InnerPawn;
-                    if (p.RaceProps.Humanlike)
-                        totalHP += SRI_Main.HP_PER_HUMAN_CORPSE;
-                    else if (p.RaceProps.baseBodySize >= 1f)
-                        totalHP += SRI_Main.HP_PER_LARGE_ANIMAL;
-                    else
-                        totalHP += SRI_Main.HP_PER_SMALL_ANIMAL;
-                }
-            }
-            return totalHP;
-        }
-
-        public void CompleteResurrection(Pawn god, Pawn performer)
-        {
-            if (god == null || !god.Dead) return;
-            
-            float hp = CalculateResurrectionHP(god);
-            
-            // Consume corpses
-            if (gatheredCorpses.TryGetValue(god.thingIDNumber, out List<Thing> corpses))
-            {
-                foreach (Thing corpse in corpses)
-                {
-                    if (corpse != null && !corpse.Destroyed)
-                        corpse.Destroy();
-                }
-                gatheredCorpses.Remove(god.thingIDNumber);
-            }
-            godDeathTicks.Remove(god.thingIDNumber);
-            
-            // Resurrect
-            ResurrectionUtility.TryResurrect(god);
-            
-            // Set health based on gathered corpses
-            float maxHealth = god.health.summaryHealth.SummaryHealthPercent;
-            float targetHealth = Mathf.Clamp01(hp / 100f);
-            
-            // Add resurrection sickness
-            god.health.AddHediff(SRI_Main.Hediff_ResurrectionSickness);
-            
-            // Exhaust performer
-            if (performer != null)
-            {
-                performer.health.AddHediff(SRI_Main.Hediff_RitualExhaustion);
-            }
-            
-            // Notify
-            Messages.Message("The God has been resurrected!", god, MessageTypeDefOf.PositiveEvent, true);
-            
-            // Give thought to all slaves
-            if (god.Map != null)
-            {
-                foreach (Pawn slave in god.Map.mapPawns.SlavesOfColonySpawned.ToList())
-                {
-                    slave.needs.mood.thoughts.memories.TryGainMemory(SRI_Main.Thought_GodResurrected);
-                }
-            }
-        }
-
-        private void CleanupExpiredResurrections()
-        {
-            List<int> expired = new List<int>();
-            foreach (var kvp in godDeathTicks)
-            {
-                if (Find.TickManager.TicksGame - kvp.Value > SRI_Main.RESURRECTION_TIME_LIMIT)
-                {
-                    expired.Add(kvp.Key);
-                }
-            }
-            foreach (int id in expired)
-            {
-                godDeathTicks.Remove(id);
-                gatheredCorpses.Remove(id);
-            }
-        }
-
-        // ==================== EXISTING SYSTEMS ====================
-
-        public int GetLovinCount(Pawn m) => dailyLovinCount.TryGetValue(m.thingIDNumber, out int c) ? c : 0;
         
-        public void IncrementLovinCount(Pawn m)
+        // Cached pawn references - updated safely in GameComponentTick
+        Dictionary<int, Pawn> cachedMasterPawns = new();
+        public int CachedT3Count { get; private set; } = 0;
+        public int CachedT4Count { get; private set; } = 0;
+        List<Action> deferredActions = new();
+        bool pendingApply = false;
+        
+        void UpdateCache()
         {
-            if (dailyLovinCount.ContainsKey(m.thingIDNumber))
-                dailyLovinCount[m.thingIDNumber]++;
-            else
-                dailyLovinCount.Add(m.thingIDNumber, 1);
-        }
-
-        public bool IsHybrid(Building_Bed b) => b != null && hybridBedIDs.Contains(b.thingIDNumber);
-
-        public void SetHybrid(Building_Bed b, bool s)
-        {
-            if (b == null) return;
-            if (s)
+            try
             {
-                hybridBedIDs.Add(b.thingIDNumber);
-                Traverse.Create(b).Field("forOwnerType").SetValue(BedOwnerType.Colonist);
-            }
-            else
-            {
-                hybridBedIDs.Remove(b.thingIDNumber);
-            }
-        }
-
-        public void SetPunishCooldown(Pawn p, int t)
-        {
-            if (punishmentCooldowns.ContainsKey(p.thingIDNumber))
-                punishmentCooldowns[p.thingIDNumber] = t;
-            else
-                punishmentCooldowns.Add(p.thingIDNumber, t);
-        }
-
-        public int GetPunishUnlockTick(Pawn p) => punishmentCooldowns.TryGetValue(p.thingIDNumber, out int val) ? val : 0;
-
-        private void ProcessGodAura()
-        {
-            Map m = Find.CurrentMap;
-            if (m == null) return;
-
-            // 1. Maintain God Powers on legitimate Gods
-            foreach (Pawn g in m.mapPawns.FreeColonistsSpawned.ToList().Where(p => SRI_Main.IsGod(p)))
-            {
-                if (!g.health.hediffSet.HasHediff(SRI_Main.Hediff_DivinePower))
-                    g.health.AddHediff(SRI_Main.Hediff_DivinePower);
-
-                foreach (Pawn s in m.mapPawns.SlavesOfColonySpawned.ToList())
-                {
-                    if (s.Position.InHorDistOf(g.Position, 9f))
-                    {
-                        Need_Suppression ns = s.needs.TryGetNeed<Need_Suppression>();
-                        if (ns != null && ns.CurLevel < 1f)
-                        {
-                            ns.CurLevel = 1f;
-                            FleckMaker.ThrowMetaIcon(s.Position, s.Map, FleckDefOf.IncapIcon);
-                        }
-                    }
-                }
-            }
-
-            // 2. FIX: FORCEFULLY REMOVE GOD STATUS FROM SLAVES
-            // This fixes the bug where visitors spawned with the trait before the fix
-            foreach (Pawn s in m.mapPawns.SlavesOfColonySpawned.ToList())
-            {
-                if (SRI_Main.IsGod(s))
-                {
-                    // Strip Trait
-                    Trait godTrait = s.story.traits.GetTrait(SRI_Main.Trait_ReincarnatedGod);
-                    s.story.traits.RemoveTrait(godTrait);
-                    
-                    // Strip Hediff
-                    Hediff power = s.health.hediffSet.GetFirstHediffOfDef(SRI_Main.Hediff_DivinePower);
-                    if (power != null) s.health.RemoveHediff(power);
-
-                    // Debug message to confirm fix
-                    // Messages.Message("Corrected bugged slave: " + s.LabelShort, s, MessageTypeDefOf.NeutralEvent, false);
-                }
-            }
-        }
-
-        private void UpdateHeadConcubines()
-        {
-            Map map = Find.CurrentMap;
-            if (map == null) return;
-
-            Dictionary<Pawn, List<Pawn>> masterConcubines = new Dictionary<Pawn, List<Pawn>>();
-
-            foreach (Pawn slave in map.mapPawns.SlavesOfColonySpawned.ToList())
-            {
-                Pawn master = GetMasterOf(slave);
-                if (master != null)
-                {
-                    if (!masterConcubines.ContainsKey(master))
-                        masterConcubines[master] = new List<Pawn>();
-                    masterConcubines[master].Add(slave);
-                }
-            }
-
-            foreach (var kvp in masterConcubines)
-            {
-                Pawn favorite = null;
-                float maxScore = -999f;
-
-                foreach (Pawn concubine in kvp.Value)
-                {
-                    // Remove existing head concubine status
-                    Hediff existing = concubine.health.hediffSet.GetFirstHediffOfDef(SRI_Main.Hediff_HeadConcubine);
-                    if (existing != null) concubine.health.RemoveHediff(existing);
-
-                    float score = concubine.relations.OpinionOf(kvp.Key) + (concubine.skills.GetSkill(SkillDefOf.Social).Level * 5f);
-                    if (score > maxScore)
-                    {
-                        maxScore = score;
-                        favorite = concubine;
-                    }
-                }
-
-                if (favorite != null)
-                    favorite.health.AddHediff(SRI_Main.Hediff_HeadConcubine);
-            }
-        }
-
-        private void ProcessAutoEvents()
-        {
-            Map m = Find.CurrentMap;
-            if (m == null) return;
-            
-            int currentDay = GenLocalDate.DayOfYear(m);
-
-            foreach (Pawn p in m.mapPawns.FreeColonistsSpawned.ToList())
-            {
-                if (p.Downed || p.Dead) continue;
-
-                // Night check (22h to 5h)
-                bool night = GenLocalDate.HourInteger(m) >= 22 || GenLocalDate.HourInteger(m) <= 5;
+                var m = Find.CurrentMap;
+                if (m == null) { cacheValid = false; return; }
                 
-                if (night && p.InBed())
+                // Cache slave count and tier counts (READ ONLY)
+                CachedSlaveCount = 0;
+                CachedT3Count = 0;
+                CachedT4Count = 0;
+                var slaves = m.mapPawns.SlavesOfColonySpawned;
+                if (slaves != null)
                 {
-                    bool injured = p.health.hediffSet.hediffs.Any(h => h is Hediff_Injury);
-                    int lovinCount = GetLovinCount(p);
-
-                    // HEALING RITUAL LOGIC (Limited to once per day via lastHealingRitualDay)
-                    if (currentDay != lastHealingRitualDay && (injured || (lovinCount >= 2 && Rand.Chance(0.2f))))
+                    foreach (var s in slaves)
                     {
-                        List<Pawn> concubines = GetAvailableConcubines(p, true);
-                        if (concubines.Count >= 2)
+                        if (s == null || s.Dead) continue;
+                        CachedSlaveCount++;
+                        int t = Defs.Tier(s);
+                        if (t >= 4) CachedT4Count++;
+                        else if (t >= 3) CachedT3Count++;
+                    }
+                }
+                
+                // Cache god IDs and master pawns (READ ONLY)
+                cachedGodIds.Clear();
+                cachedMasterPawns.Clear();
+                var colonists = m.mapPawns.FreeColonistsSpawned;
+                if (colonists != null)
+                {
+                    foreach (var c in colonists)
+                    {
+                        if (c == null || c.Dead) continue;
+                        if (Defs.IsGod(c)) cachedGodIds.Add(c.thingIDNumber);
+                        cachedMasterPawns[c.thingIDNumber] = c;
+                    }
+                }
+                
+                // Cache master assignments from slaveMap (no pawn list access needed)
+                cachedMasterIds.Clear();
+                foreach (var kv in slaveMap)
+                {
+                    if (kv.Value > 0) cachedMasterIds[kv.Key] = kv.Value;
+                }
+                
+                cacheValid = true;
+            }
+            catch { cacheValid = false; }
+        }
+        
+        void ApplyAllDeferred() 
+        { 
+            // Apply hediff changes
+            if (deferred.Count > 0)
+            {
+                var l = deferred.ToList(); 
+                deferred.Clear();
+                foreach (var (p, h, add) in l) 
+                { 
+                    try 
+                    { 
+                        if (p == null || p.Dead || p.Destroyed) continue; 
+                        if (add && !p.health.hediffSet.HasHediff(h)) 
+                            p.health.AddHediff(h); 
+                        else if (!add) 
+                        { 
+                            var x = p.health.hediffSet.GetFirstHediffOfDef(h); 
+                            if (x != null) p.health.RemoveHediff(x); 
+                        } 
+                    } 
+                    catch { } 
+                }
+            }
+            
+            // Apply other deferred actions
+            if (deferredActions.Count > 0)
+            {
+                var actions = deferredActions.ToList();
+                deferredActions.Clear();
+                foreach (var a in actions)
+                {
+                    try { a(); } catch { }
+                }
+            }
+        }
+        
+        public void Queue(Pawn p, HediffDef h, bool add) => deferred.Add((p, h, add));
+        public void QueueAction(Action a) => deferredActions.Add(a);
+        
+        // Safe cached access for hediffs - NO pawn list iteration
+        public int GetCachedMasterId(Pawn s) => cachedMasterIds.TryGetValue(s.thingIDNumber, out int id) ? id : -1;
+        public bool IsGodCached(Pawn p) => cachedGodIds.Contains(p.thingIDNumber);
+        public Pawn GetCachedMasterPawn(int masterId) => masterId > 0 && cachedMasterPawns.TryGetValue(masterId, out var p) ? p : null;
+
+        // Concubine - these methods are called from UI/jobs, not during tick iteration
+        public void SetConcubine(Pawn s, Pawn m) { slaveMap[s.thingIDNumber] = m?.thingIDNumber ?? -1; if (m != null && !s.health.hediffSet.HasHediff(Defs.H_Devotion)) Queue(s, Defs.H_Devotion, true); }
+        public bool IsConcubine(Pawn s, Pawn m) => slaveMap.TryGetValue(s.thingIDNumber, out int id) && id == m.thingIDNumber;
+        
+        // GetMaster - ONLY call from safe contexts (UI, job finish actions), not during ticks
+        public Pawn GetMaster(Pawn s) 
+        { 
+            if (s?.Map == null) return null; 
+            if (!slaveMap.TryGetValue(s.thingIDNumber, out int id) || id <= 0) return null; 
+            // Only iterate when explicitly needed, with try-catch
+            try 
+            { 
+                foreach (var p in s.Map.mapPawns.FreeColonistsSpawned) 
+                { 
+                    if (p.thingIDNumber == id) return p; 
+                } 
+            } 
+            catch { } 
+            return null; 
+        }
+        
+        // GetMasterFromCache - SAFE to call during ticks
+        public Pawn GetMasterFromCache(Pawn s)
+        {
+            if (s?.Map == null || !cacheValid) return null;
+            int masterId = GetCachedMasterId(s);
+            if (masterId <= 0) return null;
+            // Find master without iterating - use Map's pawn lookup
+            try { return s.Map.mapPawns.AllPawns.FirstOrDefault(p => p.thingIDNumber == masterId && !p.Dead); }
+            catch { return null; }
+        }
+        
+        public List<Pawn> GetConcubines(Pawn m) 
+        { 
+            if (m?.Map == null) return new(); 
+            try 
+            { 
+                var result = new List<Pawn>();
+                foreach (var s in m.Map.mapPawns.SlavesOfColonySpawned) 
+                { 
+                    if (IsConcubine(s, m)) result.Add(s); 
+                }
+                return result;
+            } 
+            catch { return new(); } 
+        }
+
+        // Beds
+        public bool IsHybrid(Building_Bed b) => b != null && hybridBeds.Contains(b.thingIDNumber);
+        public void SetHybrid(Building_Bed b, bool v) { if (v) hybridBeds.Add(b.thingIDNumber); else hybridBeds.Remove(b.thingIDNumber); }
+
+        // Cooldowns
+        public bool Ready(Pawn p, string a) => GetCD(a)?.TryGetValue(p.thingIDNumber, out int v) != true || v <= Find.TickManager.TicksGame;
+        public int Remaining(Pawn p, string a) => Math.Max(0, (GetCD(a)?.TryGetValue(p.thingIDNumber, out int v) == true ? v : 0) - Find.TickManager.TicksGame);
+        public void SetCD(Pawn p, string a, int dur) { var d = GetCD(a); if (d != null) d[p.thingIDNumber] = Find.TickManager.TicksGame + Defs.CD(dur); }
+        Dictionary<int, int> GetCD(string a) => a switch { "smite" => cdSmite, "calm" => cdCalm, "bless" => cdBless, "wrath" => cdWrath, "punish" => cdPunish, _ => null };
+
+        // Lovin
+        public int GetLovin(Pawn p) => dailyLovin.TryGetValue(p.thingIDNumber, out int v) ? v : 0;
+        public void AddLovin(Pawn p) => dailyLovin[p.thingIDNumber] = GetLovin(p) + 1;
+
+        // Resurrection
+        public void RegisterDeath(Pawn g) => godDeaths[g.thingIDNumber] = Find.TickManager.TicksGame;
+        public bool CanRes(Pawn g) => godDeaths.TryGetValue(g.thingIDNumber, out int t) && Find.TickManager.TicksGame - t < 180000;
+        public int GetHP(Pawn g) => corpseHP.TryGetValue(g.thingIDNumber, out int v) ? v : 0;
+        public void AddHP(Pawn g, int hp) => corpseHP[g.thingIDNumber] = GetHP(g) + hp;
+        public void CompleteRes(Pawn g, Pawn perf) { 
+            QueueAction(() => {
+                ResurrectionUtility.TryResurrect(g); 
+                Queue(g, Defs.H_ResSick, true); 
+                Queue(perf, Defs.H_Exhaust, true); 
+                try { foreach (var s in g.Map?.mapPawns.SlavesOfColonySpawned?.ToList() ?? new List<Pawn>()) s.needs?.mood?.thoughts?.memories?.TryGainMemory(Defs.T_Resurrected); } catch {}
+                godDeaths.Remove(g.thingIDNumber); 
+                corpseHP.Remove(g.thingIDNumber); 
+            });
+        }
+
+        // Queue methods - use ONLY cached data, never iterate pawn lists
+        void QueueProcessAura(Map m)
+        {
+            // Use only cached data - NO pawn list iteration!
+            foreach (var godId in cachedGodIds)
+            {
+                var g = GetCachedMasterPawn(godId);
+                if (g == null || g.Dead) continue;
+                if (!g.health.hediffSet.HasHediff(Defs.H_Divine)) Queue(g, Defs.H_Divine, true);
+            }
+            
+            // Queue suppression updates to run safely later
+            QueueAction(() => {
+                try
+                {
+                    var gods = m?.mapPawns?.FreeColonistsSpawned?.ToList()?.Where(Defs.IsGod);
+                    if (gods == null) return;
+                    foreach (var g in gods)
+                    {
+                        if (g == null || g.Dead) continue;
+                        foreach (var s in m.mapPawns.SlavesOfColonySpawned?.ToList() ?? new List<Pawn>())
                         {
-                            concubines.SortByDescending(x => x.health.hediffSet.HasHediff(SRI_Main.Hediff_HeadConcubine));
-                            StartHealingTouch(p, concubines[0], concubines[1]);
-                            lastHealingRitualDay = currentDay;
-                            continue;
+                            if (s == null || s.Dead) continue;
+                            if (s.Position.InHorDistOf(g.Position, 9f))
+                            {
+                                var sup = s.needs?.TryGetNeed<Need_Suppression>();
+                                if (sup != null && sup.CurLevel < 1) { sup.CurLevel = 1; FleckMaker.ThrowMetaIcon(s.Position, s.Map, FleckDefOf.IncapIcon); }
+                            }
                         }
                     }
                 }
+                catch { }
+            });
+        }
 
-                if (GetLovinCount(p) < 2)
+        void QueueUpdateHeads(Map m)
+        {
+            // Use only cached data to collect IDs
+            var slavesToRemoveHead = new List<int>();
+            var bestPerMaster = new Dictionary<int, int>(); // masterId -> slaveId
+            
+            // Build groups from cached data (NO pawn iteration)
+            var groups = new Dictionary<int, List<int>>(); // masterId -> list of slaveIds
+            foreach (var kv in cachedMasterIds)
+            {
+                int slaveId = kv.Key;
+                int masterId = kv.Value;
+                if (masterId <= 0) continue;
+                if (!groups.ContainsKey(masterId)) groups[masterId] = new();
+                groups[masterId].Add(slaveId);
+            }
+            
+            // Queue the actual work for safe execution
+            QueueAction(() => {
+                try
                 {
-                    List<Pawn> concubines = GetAvailableConcubines(p, false);
-                    if (concubines.Count > 0)
+                    foreach (var s in m?.mapPawns?.SlavesOfColonySpawned?.ToList() ?? new List<Pawn>())
                     {
-                        Pawn c = concubines.FirstOrDefault(x => x.health.hediffSet.HasHediff(SRI_Main.Hediff_HeadConcubine)) ?? concubines.RandomElement();
-                        if (p.InBed() || (p.CurJob != null && p.CurJob.def == JobDefOf.Wait_MaintainPosture))
-                            StartAutoLovin(p, c);
+                        if (s == null || s.Dead) continue;
+                        if (s.health.hediffSet.HasHediff(Defs.H_HeadConcubine)) 
+                            Queue(s, Defs.H_HeadConcubine, false);
+                    }
+                    
+                    var pawnGroups = new Dictionary<Pawn, List<Pawn>>();
+                    foreach (var s in m?.mapPawns?.SlavesOfColonySpawned?.ToList() ?? new List<Pawn>())
+                    {
+                        if (s == null || s.Dead) continue;
+                        var master = GetMaster(s);
+                        if (master != null) { if (!pawnGroups.ContainsKey(master)) pawnGroups[master] = new(); pawnGroups[master].Add(s); }
+                    }
+                    foreach (var kv in pawnGroups)
+                    {
+                        Pawn best = null; float sc = -999;
+                        foreach (var c in kv.Value) 
+                        { 
+                            if (c == null) continue;
+                            float s = c.relations.OpinionOf(kv.Key) + c.skills.GetSkill(SkillDefOf.Social).Level * 5; 
+                            if (s > sc) { sc = s; best = c; } 
+                        }
+                        if (best != null) Queue(best, Defs.H_HeadConcubine, true);
                     }
                 }
-            }
+                catch { }
+            });
         }
 
-        private List<Pawn> GetAvailableConcubines(Pawn master, bool requireStockholm)
+        void QueueProcessAuto(Map m)
         {
-            List<Pawn> result = new List<Pawn>();
-            foreach (Pawn p in master.Map.mapPawns.SlavesOfColonySpawned.ToList())
-            {
-                if (!IsConcubineOf(p, master)) continue;
-                if (p.Downed || p.Dead || p.Drafted) continue;
-                if (p.CurJobDef == SRI_Main.Job_ConcubineLovin || p.CurJobDef == SRI_Main.Job_HealingTouch) continue;
-                if (requireStockholm && !p.health.hediffSet.HasHediff(SRI_Main.Hediff_Stockholm)) continue;
-                result.Add(p);
-            }
-            return result;
+            int d = GenLocalDate.DayOfYear(m);
+            if (d == lastHeal) return;
+            
+            bool night = GenLocalDate.HourInteger(m) >= 22 || GenLocalDate.HourInteger(m) <= 5;
+            if (!night) return;
+            
+            // Mark as done immediately to prevent re-triggering
+            lastHeal = d;
+            
+            // Queue job assignments
+            QueueAction(() => {
+                try
+                {
+                    foreach (var master in m?.mapPawns?.FreeColonistsSpawned?.ToList() ?? new List<Pawn>())
+                    {
+                        if (master == null || master.Downed || master.Dead || !master.InBed()) continue;
+                        var cons = GetConcubines(master)?.Where(c => c != null && !c.Downed && !c.Dead && c.health.hediffSet.HasHediff(Defs.H_Stockholm))?.ToList();
+                        if (cons != null && cons.Count >= 2) 
+                        { 
+                            cons[0].jobs.TryTakeOrderedJob(JobMaker.MakeJob(Defs.Job_Heal, master, cons[1])); 
+                            cons[1].jobs.TryTakeOrderedJob(JobMaker.MakeJob(Defs.Job_Heal, master, cons[0])); 
+                            return; // Only one heal per night
+                        }
+                    }
+                }
+                catch { }
+            });
         }
-
-        private void StartAutoLovin(Pawn master, Pawn slave)
-        {
-            Job j = JobMaker.MakeJob(SRI_Main.Job_ConcubineLovin, master);
-            slave.jobs.TryTakeOrderedJob(j, JobTag.Misc);
-            IncrementLovinCount(master);
-        }
-
-        private void StartHealingTouch(Pawn master, Pawn c1, Pawn c2)
-        {
-            c1.jobs.TryTakeOrderedJob(JobMaker.MakeJob(SRI_Main.Job_HealingTouch, master, c2), JobTag.Misc);
-            c2.jobs.TryTakeOrderedJob(JobMaker.MakeJob(SRI_Main.Job_HealingTouch, master, c1), JobTag.Misc);
-            Messages.Message("Healing Touch ritual begins!", master, MessageTypeDefOf.PositiveEvent, true);
-        }
-
-        // ==================== SAVE/LOAD ====================
 
         public override void ExposeData()
         {
-            base.ExposeData();
-            
-            // Existing
-            List<int> hybridList = hybridBedIDs.ToList();
-            Scribe_Collections.Look(ref hybridList, "SRI_Hybrid", LookMode.Value);
-            if (Scribe.mode == LoadSaveMode.PostLoadInit && hybridList != null)
-                hybridBedIDs = new HashSet<int>(hybridList);
-            
-            Scribe_Collections.Look(ref punishmentCooldowns, "SRI_Cool", LookMode.Value, LookMode.Value);
-            Scribe_Collections.Look(ref slaveToMasterMap, "SRI_Map", LookMode.Value, LookMode.Value);
-            Scribe_Collections.Look(ref dailyLovinCount, "SRI_Daily", LookMode.Value, LookMode.Value);
-            
-            // Fix: Save daily reset trackers
-            Scribe_Values.Look(ref lastDayReset, "SRI_LastDayReset", 0);
-            Scribe_Values.Look(ref lastHealingRitualDay, "SRI_LastHealDay", -1);
-
-            // Ability cooldowns
-            Scribe_Collections.Look(ref smiteCooldowns, "SRI_SmiteCool", LookMode.Value, LookMode.Value);
-            Scribe_Collections.Look(ref massCalmCooldowns, "SRI_CalmCool", LookMode.Value, LookMode.Value);
-            Scribe_Collections.Look(ref blessingCooldowns, "SRI_BlessCool", LookMode.Value, LookMode.Value);
-            Scribe_Collections.Look(ref wrathCooldowns, "SRI_WrathCool", LookMode.Value, LookMode.Value);
-            
-            // Shield cooldowns
-            Scribe_Collections.Look(ref shieldCooldowns, "SRI_ShieldCool", LookMode.Value, LookMode.Value);
-            
-            // Resurrection
-            Scribe_Collections.Look(ref godDeathTicks, "SRI_GodDeath", LookMode.Value, LookMode.Value);
-            
-            // Initialize nulls
-            if (punishmentCooldowns == null) punishmentCooldowns = new Dictionary<int, int>();
-            if (slaveToMasterMap == null) slaveToMasterMap = new Dictionary<int, int>();
-            if (dailyLovinCount == null) dailyLovinCount = new Dictionary<int, int>();
-            if (smiteCooldowns == null) smiteCooldowns = new Dictionary<int, int>();
-            if (massCalmCooldowns == null) massCalmCooldowns = new Dictionary<int, int>();
-            if (blessingCooldowns == null) blessingCooldowns = new Dictionary<int, int>();
-            if (wrathCooldowns == null) wrathCooldowns = new Dictionary<int, int>();
-            if (shieldCooldowns == null) shieldCooldowns = new Dictionary<int, int>();
-            if (godDeathTicks == null) godDeathTicks = new Dictionary<int, int>();
-            if (gatheredCorpses == null) gatheredCorpses = new Dictionary<int, List<Thing>>();
-        }
-    }
-
-    #endregion
-
-    // ======================================================================
-    // SCENARIO PART
-    // ======================================================================
-
-    #region Scenario Part
-
-    public class ScenPart_GodSetup : ScenPart
-    {
-        public ScenPart_GodSetup() { }
-
-        public override string Summary(Scenario scen) => "A reincarnated god with a devoted harem.";
-
-        public override IEnumerable<string> GetSummaryListEntries(string tag)
-        {
-            if (tag == "MapScenario")
-                yield return "Reincarnated God starts with 4 devoted slaves";
-        }
-
-        public override void PostGameStart()
-        {
-            base.PostGameStart();
-
-            try
+            var beds = hybridBeds.ToList();
+            Scribe_Collections.Look(ref beds, "beds", LookMode.Value);
+            Scribe_Collections.Look(ref slaveMap, "slaves", LookMode.Value, LookMode.Value);
+            Scribe_Collections.Look(ref cdPunish, "cdP", LookMode.Value, LookMode.Value);
+            Scribe_Collections.Look(ref cdSmite, "cdS", LookMode.Value, LookMode.Value);
+            Scribe_Collections.Look(ref cdCalm, "cdC", LookMode.Value, LookMode.Value);
+            Scribe_Collections.Look(ref cdBless, "cdB", LookMode.Value, LookMode.Value);
+            Scribe_Collections.Look(ref cdWrath, "cdW", LookMode.Value, LookMode.Value);
+            Scribe_Collections.Look(ref godDeaths, "deaths", LookMode.Value, LookMode.Value);
+            Scribe_Collections.Look(ref corpseHP, "hp", LookMode.Value, LookMode.Value);
+            Scribe_Values.Look(ref lastDay, "day"); Scribe_Values.Look(ref lastHeal, "heal");
+            if (Scribe.mode == LoadSaveMode.PostLoadInit)
             {
-                List<Pawn> colonists = Find.GameInitData.startingAndOptionalPawns.Take(5).ToList();
-                if (colonists.Count == 0)
-                {
-                    Log.Error("[SRI] No colonists found in PostGameStart!");
-                    return;
-                }
-
-                // Setup the God
-                Pawn god = colonists[0];
-                SetupGod(god);
-
-                // Setup the Harem
-                for (int i = 1; i < colonists.Count; i++)
-                {
-                    SetupConcubine(colonists[i], god);
-                }
-
-                // Create Harem Cult ideology if Ideology is active
-                if (ModsConfig.IdeologyActive)
-                {
-                    CreateHaremCultIdeology(god, colonists);
-                }
-
-                Messages.Message("The God has descended with his harem!", god, MessageTypeDefOf.PositiveEvent, true);
-                Log.Message("[SRI] God setup completed successfully");
-            }
-            catch (Exception e)
-            {
-                Log.Error("[SRI] Error in ScenPart_GodSetup.PostGameStart: " + e.ToString());
-            }
-        }
-
-        private void SetupGod(Pawn god)
-        {
-            god.gender = Gender.Male;
-
-            if (god.story != null)
-            {
-                // Remove Asexual trait
-                TraitDef asexual = TraitDefOf.Asexual;
-                if (asexual != null && god.story.traits.HasTrait(asexual))
-                {
-                    Trait asexualTrait = god.story.traits.GetTrait(asexual);
-                    god.story.traits.RemoveTrait(asexualTrait);
-                }
-
-                // Make room for new traits
-                while (god.story.traits.allTraits.Count >= 3)
-                    god.story.traits.allTraits.RemoveAt(0);
-
-                // Add Reincarnated God trait
-                god.story.traits.GainTrait(new Trait(SRI_Main.Trait_ReincarnatedGod));
-
-                // Add Beauty (Handsome = degree 2)
-                TraitDef beauty = TraitDef.Named("Beauty");
-                if (beauty != null && !god.story.traits.HasTrait(beauty))
-                    god.story.traits.GainTrait(new Trait(beauty, 2));
-            }
-
-            // Set minimum skill levels
-            if (god.skills != null)
-            {
-                foreach (SkillRecord skill in god.skills.skills)
-                {
-                    if (skill.Level < 5)
-                    {
-                        skill.Level = 5;
-                        skill.xpSinceLastLevel = 0;
-                    }
-                }
-
-                god.skills.GetSkill(SkillDefOf.Social).Level = Mathf.Max(12, god.skills.GetSkill(SkillDefOf.Social).Level);
-                god.skills.GetSkill(SkillDefOf.Intellectual).Level = Mathf.Max(10, god.skills.GetSkill(SkillDefOf.Intellectual).Level);
-                god.skills.GetSkill(SkillDefOf.Melee).Level = Mathf.Max(10, god.skills.GetSkill(SkillDefOf.Melee).Level);
-            }
-
-            // Add Divine Power hediff
-            god.health.AddHediff(SRI_Main.Hediff_DivinePower);
-        }
-
-        private void SetupConcubine(Pawn slave, Pawn god)
-        {
-            slave.gender = Gender.Female;
-            slave.guest.SetGuestStatus(Faction.OfPlayer, GuestStatus.Slave);
-            slave.health.AddHediff(SRI_Main.Hediff_Stockholm);
-            slave.health.AddHediff(SRI_Main.Hediff_Devotion);
-
-            // Give starting devotion boost
-            Hediff devotion = slave.health.hediffSet.GetFirstHediffOfDef(SRI_Main.Hediff_Devotion);
-            if (devotion != null)
-                devotion.Severity = 0.20f; // Start at Tier 1
-
-            if (SRI_GameComponent.Instance != null)
-                SRI_GameComponent.Instance.SetConcubine(slave, god);
-        }
-
-        private void CreateHaremCultIdeology(Pawn god, List<Pawn> colonists)
-        {
-            // Note: Creating a full ideology programmatically is very complex.
-            // The player should select an appropriate ideology during game setup.
-            // We just ensure all starting pawns share the same ideology.
-            try
-            {
-                if (!ModsConfig.IdeologyActive) return;
-                
-                Ideo playerIdeo = Faction.OfPlayer?.ideos?.PrimaryIdeo;
-                if (playerIdeo == null)
-                {
-                    Log.Warning("[SRI] No player ideology found, skipping ideology setup");
-                    return;
-                }
-
-                // Assign player ideology to all colonists with high certainty
-                foreach (Pawn p in colonists)
-                {
-                    if (p.ideo != null)
-                    {
-                        p.ideo.SetIdeo(playerIdeo);
-                        p.ideo.OffsetCertainty(0.8f);
-                    }
-                }
-
-                Log.Message("[SRI] All colonists assigned to ideology: " + playerIdeo.name);
-            }
-            catch (Exception e)
-            {
-                Log.Warning("[SRI] Could not setup ideology: " + e.Message);
+                hybridBeds = beds != null ? new(beds) : new();
+                slaveMap ??= new(); cdPunish ??= new(); cdSmite ??= new(); cdCalm ??= new(); cdBless ??= new(); cdWrath ??= new(); godDeaths ??= new(); corpseHP ??= new();
             }
         }
     }
 
-    #endregion
+    // ══════════════════════════════════════════════════════════════════════════════
+    //                              JOB DRIVERS
+    // ══════════════════════════════════════════════════════════════════════════════
 
-    // ======================================================================
-    // JOB DRIVERS
-    // ======================================================================
-
-    #region Job Drivers
-
-    public class JobDriver_SlaveLovin : JobDriver
+    public class JD_Lovin : JobDriver
     {
-        private Pawn Partner => (Pawn)TargetB.Thing;
-
-        public override bool TryMakePreToilReservations(bool errorOnFailed) => true;
-
+        Pawn Partner => (Pawn)TargetB.Thing;
+        public override bool TryMakePreToilReservations(bool e) => true;
         protected override IEnumerable<Toil> MakeNewToils()
         {
             yield return Toils_Goto.GotoThing(TargetIndex.A, PathEndMode.Touch);
-
-            Toil sync = new Toil { defaultCompleteMode = ToilCompleteMode.Never };
-            sync.tickAction = delegate
-            {
-                pawn.rotationTracker.FaceTarget(Partner);
-                if (pawn.Position.InHorDistOf(Partner.Position, 2.0f) && Partner.CurJobDef == SRI_Main.Job_SlaveLovin)
-                    ReadyForNextToil();
-                if (pawn.IsHashIntervalTick(60) && (Partner.Dead || Partner.Downed ||
-                    (!Partner.CurJobDef.Equals(SRI_Main.Job_SlaveLovin) && !Partner.Drafted && Partner.CurJobDef != JobDefOf.Goto)))
-                    EndJobWith(JobCondition.Incompletable);
-            };
-            yield return sync;
-
-            Toil lovin = new Toil { defaultCompleteMode = ToilCompleteMode.Delay, defaultDuration = 500 };
-            lovin.initAction = delegate { FleckMaker.ThrowMetaIcon(pawn.Position, pawn.Map, FleckDefOf.Heart); };
-            lovin.tickAction = delegate
-            {
-                pawn.rotationTracker.FaceTarget(Partner);
-                if (pawn.IsHashIntervalTick(100))
-                {
-                    if (Rand.Chance(0.6f))
-                        FleckMaker.ThrowMetaIcon(pawn.Position, pawn.Map, FleckDefOf.Heart);
-                    else
-                        MoteMaker.ThrowText(pawn.DrawPos + new Vector3(0, 0, 1), pawn.Map, "❤", Color.magenta);
-                }
-            };
-            lovin.AddFinishAction(delegate
-            {
+            var wait = new Toil { defaultCompleteMode = ToilCompleteMode.Never };
+            wait.tickAction = () => { pawn.rotationTracker.FaceTarget(Partner); if (pawn.Position.InHorDistOf(Partner.Position, 2) && Partner.CurJobDef == Defs.Job_Lovin) ReadyForNextToil(); };
+            yield return wait;
+            var love = new Toil { defaultCompleteMode = ToilCompleteMode.Delay, defaultDuration = 500 };
+            love.tickAction = () => { if (pawn.IsHashIntervalTick(100)) FleckMaker.ThrowMetaIcon(pawn.Position, pawn.Map, FleckDefOf.Heart); };
+            love.AddFinishAction(() => {
                 pawn.needs.mood.thoughts.memories.TryGainMemory(ThoughtDefOf.GotSomeLovin, Partner);
-
-                // Boost devotion
-                Hediff devotion = pawn.IsSlaveOfColony ?
-                    pawn.health.hediffSet.GetFirstHediffOfDef(SRI_Main.Hediff_Devotion) :
-                    Partner.health.hediffSet.GetFirstHediffOfDef(SRI_Main.Hediff_Devotion);
-
-                if (devotion is Hediff_Devotion dev)
-                    dev.AddDevotion(0.05f);
-
-                // Chance for Stockholm
-                if (pawn.IsSlaveOfColony && !pawn.health.hediffSet.HasHediff(SRI_Main.Hediff_Stockholm) && Rand.Chance(0.20f))
-                {
-                    pawn.health.AddHediff(SRI_Main.Hediff_Stockholm);
-                    Messages.Message(pawn.LabelShort + " has developed Stockholm Syndrome!", pawn, MessageTypeDefOf.PositiveEvent, true);
-                }
+                if (pawn.IsSlaveOfColony && !pawn.health.hediffSet.HasHediff(Defs.H_Stockholm) && Rand.Chance(0.2f)) { pawn.health.AddHediff(Defs.H_Stockholm); Messages.Message($"{pawn.LabelShort} → Stockholm!", pawn, MessageTypeDefOf.PositiveEvent); }
+                (pawn.health.hediffSet.GetFirstHediffOfDef(Defs.H_Devotion) as Hediff_Devotion)?.Add(0.05f);
             });
-            yield return lovin;
+            yield return love;
         }
     }
 
-    public class JobDriver_ConcubineLovin : JobDriver
+    public class JD_Attend : JobDriver
     {
-        private Pawn Master => (Pawn)TargetA.Thing;
-
-        public override bool TryMakePreToilReservations(bool errorOnFailed) => true;
-
+        Pawn Master => (Pawn)TargetA.Thing;
+        public override bool TryMakePreToilReservations(bool e) => true;
         protected override IEnumerable<Toil> MakeNewToils()
         {
             this.FailOnDespawnedOrNull(TargetIndex.A);
             yield return Toils_Goto.GotoThing(TargetIndex.A, PathEndMode.Touch);
-
-            Toil lovin = new Toil { defaultCompleteMode = ToilCompleteMode.Delay, defaultDuration = 400 };
-            lovin.initAction = delegate { FleckMaker.ThrowMetaIcon(pawn.Position, pawn.Map, FleckDefOf.Heart); };
-            lovin.tickAction = delegate
-            {
-                pawn.rotationTracker.FaceTarget(Master);
-                if (pawn.IsHashIntervalTick(100))
-                    FleckMaker.ThrowMetaIcon(pawn.Position, pawn.Map, FleckDefOf.Heart);
-            };
-            lovin.AddFinishAction(delegate
-            {
-                // Boost devotion
-                Hediff devotion = pawn.health.hediffSet.GetFirstHediffOfDef(SRI_Main.Hediff_Devotion);
-                if (devotion is Hediff_Devotion dev)
-                    dev.AddDevotion(0.05f);
-
-                // Mood effect based on Stockholm
-                if (pawn.health.hediffSet.HasHediff(SRI_Main.Hediff_Stockholm))
-                {
-                    pawn.needs.mood.thoughts.memories.TryGainMemory(SRI_Main.Thought_SatisfiedByMaster, Master);
-                    return;
-                }
-
-                float score = 1.0f;
-                TraitDef beauty = TraitDef.Named("Beauty");
-                if (beauty != null && Master.story.traits.HasTrait(beauty))
-                    score += Master.story.traits.DegreeOfTrait(beauty) * 0.5f;
-                if (Master.skills.GetSkill(SkillDefOf.Social).Level > 5)
-                    score += (Master.skills.GetSkill(SkillDefOf.Social).Level - 5) * 0.1f;
-                if (pawn.relations.OpinionOf(Master) < -20)
-                    score -= 2.0f;
-
-                if (score >= 1.0f)
-                    pawn.needs.mood.thoughts.memories.TryGainMemory(SRI_Main.Thought_SatisfiedByMaster, Master);
-                else
-                    pawn.needs.mood.thoughts.memories.TryGainMemory(SRI_Main.Thought_ForcedAffection, Master);
-            });
-            yield return lovin;
+            var t = new Toil { defaultCompleteMode = ToilCompleteMode.Delay, defaultDuration = 400 };
+            t.tickAction = () => { pawn.rotationTracker.FaceTarget(Master); if (pawn.IsHashIntervalTick(100)) FleckMaker.ThrowMetaIcon(pawn.Position, pawn.Map, FleckDefOf.Heart); };
+            t.AddFinishAction(() => { pawn.needs.mood.thoughts.memories.TryGainMemory(pawn.health.hediffSet.HasHediff(Defs.H_Stockholm) ? Defs.T_Satisfied : Defs.T_Forced, Master); GC.I?.AddLovin(Master); });
+            yield return t;
         }
     }
 
-    public class JobDriver_HealingTouch : JobDriver
+    public class JD_Heal : JobDriver
     {
-        private Pawn Master => (Pawn)TargetA.Thing;
-        private Pawn Partner => (Pawn)TargetB.Thing;
-
-        public override bool TryMakePreToilReservations(bool errorOnFailed) => true;
-
+        Pawn Master => (Pawn)TargetA.Thing;
+        public override bool TryMakePreToilReservations(bool e) => true;
         protected override IEnumerable<Toil> MakeNewToils()
         {
             yield return Toils_Goto.GotoThing(TargetIndex.A, PathEndMode.Touch);
-
-            Toil sync = new Toil { defaultCompleteMode = ToilCompleteMode.Never };
-            sync.tickAction = delegate
-            {
-                pawn.rotationTracker.FaceTarget(Master);
-                if (Partner.Position.InHorDistOf(pawn.Position, 5f) && Partner.CurJobDef == SRI_Main.Job_HealingTouch)
-                    ReadyForNextToil();
-                if (pawn.IsHashIntervalTick(100) && (Partner.Dead || Partner.Downed || Partner.CurJobDef != SRI_Main.Job_HealingTouch))
-                    EndJobWith(JobCondition.Incompletable);
-            };
-            yield return sync;
-
-            Toil ritual = new Toil { defaultCompleteMode = ToilCompleteMode.Delay, defaultDuration = 2500 };
-            ritual.tickAction = delegate
-            {
-                pawn.rotationTracker.FaceTarget(Master);
-                if (pawn.IsHashIntervalTick(200))
-                {
-                    MoteMaker.ThrowText(pawn.DrawPos, pawn.Map, "Healing...", Color.green);
-                    FleckMaker.ThrowMetaIcon(pawn.Position, pawn.Map, FleckDefOf.Heart);
-                }
-            };
-            ritual.AddFinishAction(delegate
-            {
-                if (!Master.health.hediffSet.HasHediff(SRI_Main.Hediff_HealingTouch))
-                {
-                    Master.health.AddHediff(SRI_Main.Hediff_HealingTouch);
-                    Messages.Message(Master.LabelShort + " received Healing Touch!", Master, MessageTypeDefOf.PositiveEvent, true);
-                }
-
-                // Boost devotion
-                Hediff devotion = pawn.health.hediffSet.GetFirstHediffOfDef(SRI_Main.Hediff_Devotion);
-                if (devotion is Hediff_Devotion dev)
-                    dev.AddDevotion(0.03f);
-
-                // Give Lovin' memory to the slave performed the ritual
-                pawn.needs.mood.thoughts.memories.TryGainMemory(ThoughtDefOf.GotSomeLovin, Master);
+            var t = new Toil { defaultCompleteMode = ToilCompleteMode.Delay, defaultDuration = 2500 };
+            t.tickAction = () => { if (pawn.IsHashIntervalTick(200)) { MoteMaker.ThrowText(pawn.DrawPos, pawn.Map, "♥", Color.green); FleckMaker.ThrowMetaIcon(pawn.Position, pawn.Map, FleckDefOf.Heart); } };
+            t.AddFinishAction(() => { 
+                // Healing effect
+                if (!Master.health.hediffSet.HasHediff(Defs.H_Healing)) { Master.health.AddHediff(Defs.H_Healing); Messages.Message($"{Master.LabelShort} healed!", Master, MessageTypeDefOf.PositiveEvent); } 
+                // Devotion gain
+                (pawn.health.hediffSet.GetFirstHediffOfDef(Defs.H_Devotion) as Hediff_Devotion)?.Add(0.03f); 
+                // Mood buffs
+                pawn.needs?.mood?.thoughts?.memories?.TryGainMemory(Defs.T_ServedMaster, Master);
+                Master.needs?.mood?.thoughts?.memories?.TryGainMemory(Defs.T_ReceivedService, pawn);
             });
-            yield return ritual;
+            yield return t;
         }
     }
 
-    public class JobDriver_PunishSlave : JobDriver
+    public class JD_Punish : JobDriver
     {
-        private Pawn Victim => (Pawn)TargetA.Thing;
-
-        public override bool TryMakePreToilReservations(bool errorOnFailed) => pawn.Reserve(TargetA, job, 1, -1, null, errorOnFailed);
-
+        Pawn V => (Pawn)TargetA.Thing;
+        public override bool TryMakePreToilReservations(bool e) => pawn.Reserve(TargetA, job);
         protected override IEnumerable<Toil> MakeNewToils()
         {
             yield return Toils_Goto.GotoThing(TargetIndex.A, PathEndMode.Touch);
-
-            Toil punish = new Toil { defaultCompleteMode = ToilCompleteMode.Delay, defaultDuration = 300 };
-            punish.initAction = delegate { Messages.Message(pawn.LabelShort + " is punishing " + Victim.LabelShort, pawn, MessageTypeDefOf.NeutralEvent, false); };
-            punish.tickAction = delegate
-            {
-                pawn.rotationTracker.FaceTarget(Victim);
-                if (pawn.IsHashIntervalTick(45))
-                {
-                    pawn.Drawer.Notify_MeleeAttackOn(Victim);
-                    SoundDefOf.Pawn_Melee_Punch_HitPawn.PlayOneShot(new TargetInfo(Victim.Position, Victim.Map));
-                    FleckMaker.ThrowMicroSparks(Victim.DrawPos, Victim.Map);
-                    Victim.Drawer.Notify_DamageApplied(new DamageInfo(DamageDefOf.Blunt, 1));
-                }
-            };
-            punish.AddFinishAction(delegate
-            {
-                if (SRI_GameComponent.Instance != null)
-                    SRI_GameComponent.Instance.SetPunishCooldown(Victim, Find.TickManager.TicksGame + 120000);
-
-                Victim.health.AddHediff(SRI_Main.Hediff_PunishedPain);
-
-                if (Victim.guest != null && Victim.IsPrisoner && Victim.guest.will > 0)
-                {
-                    Victim.guest.will = Mathf.Max(0, Victim.guest.will - 5.0f);
-                    Messages.Message(Victim.LabelShort + " will broken (-5)", Victim, MessageTypeDefOf.PositiveEvent, true);
-                }
-
-                if (Victim.IsSlaveOfColony)
-                {
-                    Need_Suppression sup = Victim.needs.TryGetNeed<Need_Suppression>();
-                    if (sup != null) sup.CurLevel = 1.0f;
-                }
-
-                // Fear effect on observers
-                foreach (Pawn obs in Victim.Map.mapPawns.AllPawnsSpawned.ToList().Where(p =>
-                    p != Victim && p != pawn && p.Position.InHorDistOf(Victim.Position, 10f) &&
-                    (p.IsSlaveOfColony || p.IsPrisoner)))
-                {
-                    if (obs.IsPrisoner && obs.guest != null)
-                        obs.guest.will = Mathf.Max(0, obs.guest.will - 0.5f);
-                    else if (obs.IsSlaveOfColony)
-                    {
-                        Need_Suppression obsSup = obs.needs.TryGetNeed<Need_Suppression>();
-                        if (obsSup != null) obsSup.CurLevel += 0.3f;
-                    }
-                    MoteMaker.ThrowText(obs.DrawPos, obs.Map, "Fear!", Color.red);
-                }
+            var t = new Toil { defaultCompleteMode = ToilCompleteMode.Delay, defaultDuration = 300 };
+            t.tickAction = () => { pawn.rotationTracker.FaceTarget(V); if (pawn.IsHashIntervalTick(45)) { SoundDefOf.Pawn_Melee_Punch_HitPawn.PlayOneShot(new TargetInfo(V.Position, V.Map)); FleckMaker.ThrowMicroSparks(V.DrawPos, V.Map); } };
+            t.AddFinishAction(() => {
+                GC.I?.SetCD(V, "punish", 120000);
+                V.health.AddHediff(Defs.H_Punished);
+                var sup = V.needs.TryGetNeed<Need_Suppression>(); if (sup != null) sup.CurLevel = 1;
+                foreach (var o in V.Map.mapPawns.AllPawnsSpawned.ToList().Where(p => p != V && p != pawn && p.Position.InHorDistOf(V.Position, 10) && p.IsSlaveOfColony))
+                { var s = o.needs.TryGetNeed<Need_Suppression>(); if (s != null) s.CurLevel = Mathf.Min(1, s.CurLevel + 0.3f); MoteMaker.ThrowText(o.DrawPos, o.Map, "!", Color.red); }
             });
-            yield return punish;
+            yield return t;
         }
     }
 
-    public class JobDriver_Procure : JobDriver
+    public class JD_Procure : JobDriver
     {
-        private Pawn Victim => (Pawn)TargetA.Thing;
-
-        public override bool TryMakePreToilReservations(bool errorOnFailed) => pawn.Reserve(TargetA, job, 1, -1, null, errorOnFailed);
-
+        Pawn V => (Pawn)TargetA.Thing;
+        public override bool TryMakePreToilReservations(bool e) => pawn.Reserve(TargetA, job);
         protected override IEnumerable<Toil> MakeNewToils()
         {
             yield return Toils_Goto.GotoThing(TargetIndex.A, PathEndMode.Touch);
-
-            Toil procure = new Toil { defaultCompleteMode = ToilCompleteMode.Delay, defaultDuration = 400 };
-            procure.initAction = delegate { Messages.Message(pawn.LabelShort + " procuring " + Victim.LabelShort, pawn, MessageTypeDefOf.NeutralEvent, true); };
-            procure.tickAction = delegate
-            {
-                pawn.rotationTracker.FaceTarget(Victim);
-                if (pawn.IsHashIntervalTick(100))
-                    FleckMaker.ThrowMetaIcon(pawn.Position, pawn.Map, FleckDefOf.Heart);
-            };
-            procure.AddFinishAction(delegate
-            {
-                float chance = 0.10f + (pawn.skills.GetSkill(SkillDefOf.Social).Level * 0.045f);
-                if (Rand.Chance(Mathf.Clamp01(chance)))
+            var t = new Toil { defaultCompleteMode = ToilCompleteMode.Delay, defaultDuration = 400 };
+            t.tickAction = () => { pawn.rotationTracker.FaceTarget(V); if (pawn.IsHashIntervalTick(100)) FleckMaker.ThrowMetaIcon(pawn.Position, pawn.Map, FleckDefOf.Heart); };
+            t.AddFinishAction(() => {
+                if (Rand.Chance(0.1f + pawn.skills.GetSkill(SkillDefOf.Social).Level * 0.045f))
                 {
-                    if (Victim.guest != null)
-                    {
-                        Building_Bed bed = null;
-                        foreach (var b in Victim.Map.listerBuildings.AllBuildingsColonistOfClass<Building_Bed>())
-                        {
-                            if (b.ForPrisoners && !b.Medical && !b.Destroyed && !b.IsBurning() &&
-                                b.AnyUnownedSleepingSlot && b.CurOccupants.EnumerableCount() < b.SleepingSlotsCount)
-                            {
-                                bed = b;
-                                break;
-                            }
-                        }
-
-                        if (bed != null)
-                        {
-                            Victim.SetFaction(Faction.OfPlayer);
-                            Victim.guest.SetGuestStatus(Faction.OfPlayer, GuestStatus.Prisoner);
-                            Victim.ownership.ClaimBedIfNonMedical(bed);
-
-                            Job gotoBed = JobMaker.MakeJob(JobDefOf.Goto, bed);
-                            Job sleep = JobMaker.MakeJob(JobDefOf.LayDown, bed);
-                            Victim.jobs.StartJob(gotoBed, JobCondition.InterruptForced);
-                            Victim.jobs.jobQueue.EnqueueFirst(sleep);
-
-                            Messages.Message("Procured!", Victim, MessageTypeDefOf.PositiveEvent, true);
-                            MoteMaker.ThrowText(Victim.DrawPos, Victim.Map, "Procured!", Color.green);
-                        }
-                        else
-                        {
-                            Messages.Message("No Bed!", MessageTypeDefOf.CautionInput, false);
-                        }
-                    }
+                    var bed = pawn.Map.listerBuildings.AllBuildingsColonistOfClass<Building_Bed>().FirstOrDefault(b => b.ForPrisoners && !b.Medical && b.AnyUnownedSleepingSlot);
+                    if (bed != null) { V.SetFaction(Faction.OfPlayer); V.guest.SetGuestStatus(Faction.OfPlayer, GuestStatus.Prisoner); V.ownership.ClaimBedIfNonMedical(bed); Messages.Message("Procured!", V, MessageTypeDefOf.PositiveEvent); }
                 }
-                else
-                {
-                    Messages.Message("Refused.", Victim, MessageTypeDefOf.NegativeEvent, true);
-                    MoteMaker.ThrowText(Victim.DrawPos, Victim.Map, "Refused", Color.red);
-                }
+                else MoteMaker.ThrowText(V.DrawPos, V.Map, "Refused", Color.red);
             });
-            yield return procure;
+            yield return t;
         }
     }
 
-    public class JobDriver_DivineSmite : JobDriver
+    public class JD_Smite : JobDriver
     {
-        private LocalTargetInfo Target => job.targetA;
-
-        public override bool TryMakePreToilReservations(bool errorOnFailed) => true;
-
+        LocalTargetInfo T => job.targetA;
+        public override bool TryMakePreToilReservations(bool e) => true;
         protected override IEnumerable<Toil> MakeNewToils()
         {
-            Toil channel = new Toil { defaultCompleteMode = ToilCompleteMode.Delay, defaultDuration = 60 };
-            channel.initAction = delegate
-            {
-                pawn.rotationTracker.FaceTarget(Target);
-                MoteMaker.ThrowText(pawn.DrawPos, pawn.Map, "Divine Smite!", new Color(1f, 0.9f, 0.2f));
-            };
-            channel.tickAction = delegate
-            {
-                pawn.rotationTracker.FaceTarget(Target);
-            };
-            channel.AddFinishAction(delegate
-            {
-                // Calculate damage
-                float damage = SRI_Main.CalculateAbilityPower(pawn, 20f, 5f);
-
-                // Visual effect
-                FleckMaker.Static(Target.Cell, pawn.Map, FleckDefOf.PsycastAreaEffect, 3f);
-                SoundDefOf.Thunder_OffMap.PlayOneShot(SoundInfo.InMap(new TargetInfo(Target.Cell, pawn.Map)));
-
-                // Deal damage
-                if (Target.Thing is Pawn targetPawn)
-                {
-                    DamageInfo dinfo = new DamageInfo(DamageDefOf.Burn, damage, 0f, -1f, pawn);
-                    targetPawn.TakeDamage(dinfo);
-                }
-
-                // Set cooldown
-                if (SRI_GameComponent.Instance != null)
-                    SRI_GameComponent.Instance.SetAbilityCooldown(pawn, "Smite", SRI_Main.COOLDOWN_SMITE);
-
-                // Thought to witnesses
-                foreach (Pawn slave in pawn.Map.mapPawns.SlavesOfColonySpawned.ToList())
-                {
-                    if (slave.Position.InHorDistOf(Target.Cell, 20f))
-                    {
-                        slave.needs.mood.thoughts.memories.TryGainMemory(SRI_Main.Thought_WitnessedDivineWrath);
-
-                        Hediff devotion = slave.health.hediffSet.GetFirstHediffOfDef(SRI_Main.Hediff_Devotion);
-                        if (devotion is Hediff_Devotion dev)
-                            dev.AddDevotion(0.02f);
-                    }
-                }
+            var t = new Toil { defaultCompleteMode = ToilCompleteMode.Delay, defaultDuration = 120 };
+            t.initAction = () => MoteMaker.ThrowText(pawn.DrawPos, pawn.Map, "⚡", Color.yellow);
+            t.AddFinishAction(() => {
+                if (T.Thing is Pawn v) { v.TakeDamage(new DamageInfo(DamageDefOf.Burn, Defs.Pwr(pawn, 20, 5), 0, -1, pawn)); FleckMaker.Static(v.Position, v.Map, FleckDefOf.PsycastAreaEffect, 2); SoundDefOf.Thunder_OffMap.PlayOneShot(SoundInfo.InMap(new TargetInfo(v.Position, v.Map))); MoteMaker.ThrowText(v.DrawPos, v.Map, "SMITE!", Color.yellow); }
+                GC.I?.SetCD(pawn, "smite", Defs.CD_Smite);
+                foreach (var s in pawn.Map.mapPawns.SlavesOfColonySpawned.ToList().Where(x => x.Position.InHorDistOf(T.Cell, 20))) { s.needs.mood.thoughts.memories.TryGainMemory(Defs.T_Wrath); (s.health.hediffSet.GetFirstHediffOfDef(Defs.H_Devotion) as Hediff_Devotion)?.Add(0.02f); }
             });
-            yield return channel;
+            yield return t;
         }
     }
 
-    public class JobDriver_ResurrectionRitual : JobDriver
+    public class JD_Resurrect : JobDriver
     {
-        private Corpse GodCorpse => (Corpse)TargetA.Thing;
-
-        public override bool TryMakePreToilReservations(bool errorOnFailed) => pawn.Reserve(TargetA, job, 1, -1, null, errorOnFailed);
-
+        Corpse C => (Corpse)TargetA.Thing;
+        public override bool TryMakePreToilReservations(bool e) => pawn.Reserve(TargetA, job);
         protected override IEnumerable<Toil> MakeNewToils()
         {
-            this.FailOnDespawnedOrNull(TargetIndex.A);
             yield return Toils_Goto.GotoThing(TargetIndex.A, PathEndMode.Touch);
-
-            Toil ritual = new Toil
-            {
-                defaultCompleteMode = ToilCompleteMode.Delay,
-                defaultDuration = SRI_Main.RESURRECTION_RITUAL_DURATION
-            };
-            ritual.initAction = delegate
-            {
-                Messages.Message(pawn.LabelShort + " begins the resurrection ritual...", pawn, MessageTypeDefOf.PositiveEvent, true);
-            };
-            ritual.tickAction = delegate
-            {
-                pawn.rotationTracker.FaceTarget(GodCorpse);
-                if (pawn.IsHashIntervalTick(500))
-                {
-                    MoteMaker.ThrowText(pawn.DrawPos, pawn.Map, "Resurrecting...", new Color(1f, 0.9f, 0.2f));
-                    FleckMaker.ThrowMetaIcon(pawn.Position, pawn.Map, FleckDefOf.Heart);
-                }
-            };
-            ritual.AddFinishAction(delegate
-            {
-                if (GodCorpse?.InnerPawn != null && SRI_GameComponent.Instance != null)
-                {
-                    SRI_GameComponent.Instance.CompleteResurrection(GodCorpse.InnerPawn, pawn);
-                }
-            });
-            yield return ritual;
+            var t = new Toil { defaultCompleteMode = ToilCompleteMode.Delay, defaultDuration = 60000 };
+            t.tickAction = () => { if (pawn.IsHashIntervalTick(500)) { MoteMaker.ThrowText(pawn.DrawPos, pawn.Map, "✝", Color.cyan); FleckMaker.ThrowMetaIcon(pawn.Position, pawn.Map, FleckDefOf.Heart); } };
+            t.AddFinishAction(() => { var g = C?.InnerPawn; if (g != null) { GC.I?.CompleteRes(g, pawn); Messages.Message($"{g.LabelShort} resurrected!", g, MessageTypeDefOf.PositiveEvent); } });
+            yield return t;
         }
     }
 
-    public class JobDriver_GatherCorpse : JobDriver
+    public class JD_Gather : JobDriver
     {
-        private Thing Corpse => TargetA.Thing;
-        private Thing DestinationCorpse => TargetB.Thing; // God's corpse
-
-        public override bool TryMakePreToilReservations(bool errorOnFailed)
-        {
-            return pawn.Reserve(TargetA, job, 1, -1, null, errorOnFailed);
-        }
-
+        Corpse C => (Corpse)TargetA.Thing; Corpse G => (Corpse)TargetB.Thing;
+        public override bool TryMakePreToilReservations(bool e) => pawn.Reserve(TargetA, job);
         protected override IEnumerable<Toil> MakeNewToils()
         {
-            this.FailOnDespawnedOrNull(TargetIndex.A);
             yield return Toils_Goto.GotoThing(TargetIndex.A, PathEndMode.Touch);
             yield return Toils_Haul.StartCarryThing(TargetIndex.A);
             yield return Toils_Goto.GotoThing(TargetIndex.B, PathEndMode.Touch);
-
-            Toil deliver = new Toil();
-            deliver.initAction = delegate
-            {
-                Thing carried = pawn.carryTracker.CarriedThing;
-                if (carried != null && DestinationCorpse is Corpse godCorpse && godCorpse.InnerPawn != null)
-                {
-                    pawn.carryTracker.TryDropCarriedThing(pawn.Position, ThingPlaceMode.Near, out Thing dropped);
-                    if (SRI_GameComponent.Instance != null && dropped != null)
-                    {
-                        SRI_GameComponent.Instance.AddCorpseForResurrection(godCorpse.InnerPawn, dropped);
-                        Messages.Message("Corpse gathered for resurrection ritual.", pawn, MessageTypeDefOf.PositiveEvent, false);
-                    }
-                }
-            };
-            yield return deliver;
+            var t = new Toil { defaultCompleteMode = ToilCompleteMode.Instant };
+            t.initAction = () => { var g = G?.InnerPawn; if (g != null) { int hp = C.InnerPawn.RaceProps.Humanlike ? 30 : (C.InnerPawn.RaceProps.baseBodySize > 0.7f ? 20 : 10); GC.I?.AddHP(g, hp); C.Destroy(); MoteMaker.ThrowText(pawn.DrawPos, pawn.Map, $"+{hp}", Color.green); } };
+            yield return t;
         }
     }
 
-    #endregion
+    // ══════════════════════════════════════════════════════════════════════════════
+    //                              HAREM TAB
+    // ══════════════════════════════════════════════════════════════════════════════
 
-    // ======================================================================
-    // HARMONY PATCHES
-    // ======================================================================
-
-    #region Harmony Patches
-
-    // Divine Abilities Gizmos
-    [HarmonyPatch(typeof(Pawn), "GetGizmos")]
-    public static class Patch_Pawn_Gizmos
+    public class HaremTab : MainTabWindow
     {
-        public static IEnumerable<Gizmo> Postfix(IEnumerable<Gizmo> __result, Pawn __instance)
+        Vector2 scroll; Pawn sel;
+        public override Vector2 RequestedTabSize => new(620, 520);
+
+        public override void DoWindowContents(Rect r)
         {
-            foreach (var g in __result) yield return g;
+            var m = Find.CurrentMap; if (m == null) return;
+            var god = m.mapPawns.FreeColonistsSpawned.FirstOrDefault(Defs.IsGod);
+            var slaves = m.mapPawns.SlavesOfColonySpawned.ToList();
+
+            // Header
+            Text.Font = GameFont.Medium;
+            Widgets.Label(new Rect(0, 0, r.width, 30), "═══ Harem Management ═══");
+            Text.Font = GameFont.Small;
+
+            float y = 35;
+            if (god != null)
+            {
+                var div = god.health.hediffSet.GetFirstHediffOfDef(Defs.H_Divine);
+                Widgets.Label(new Rect(0, y, r.width, 22), $"God: {god.LabelShort}  |  Slaves: {slaves.Count}  |  Power: {div?.Severity ?? 0:F0}");
+            }
+            else Widgets.Label(new Rect(0, y, r.width, 22), "No God present");
+            y += 24;
+
+            float avg = slaves.Count > 0 ? slaves.Average(s => s.health.hediffSet.GetFirstHediffOfDef(Defs.H_Devotion)?.Severity ?? 0) * 100 : 0;
+            int t4 = slaves.Count(s => Defs.Tier(s) >= 4), t3 = slaves.Count(s => Defs.Tier(s) == 3);
+            Widgets.Label(new Rect(0, y, r.width, 22), $"Avg: {avg:F0}%  |  Zealots: {t4}  |  Devoted: {t3}");
+            y += 28;
+
+            Widgets.DrawLineHorizontal(0, y, r.width); y += 5;
+
+            // Headers
+            GUI.color = Color.gray;
+            Widgets.Label(new Rect(0, y, 130, 22), "Name"); Widgets.Label(new Rect(130, y, 70, 22), "Tier"); Widgets.Label(new Rect(200, y, 70, 22), "Dev%");
+            Widgets.Label(new Rect(270, y, 90, 22), "Spec"); Widgets.Label(new Rect(360, y, 90, 22), "Master"); Widgets.Label(new Rect(460, y, 80, 22), "Status");
+            GUI.color = Color.white; y += 22;
+
+            // List
+            Rect listR = new(0, y, r.width, r.height - y - 95);
+            Rect viewR = new(0, 0, listR.width - 20, slaves.Count * 26);
+            Widgets.BeginScrollView(listR, ref scroll, viewR);
+            float ly = 0;
+            foreach (var s in slaves.OrderByDescending(Defs.Tier))
+            {
+                Rect row = new(0, ly, viewR.width, 24);
+                if ((int)(ly / 26) % 2 == 0) Widgets.DrawLightHighlight(row);
+                if (sel == s) Widgets.DrawHighlightSelected(row);
+                if (Widgets.ButtonInvisible(row)) sel = s;
+
+                int tier = Defs.Tier(s);
+                var dev = s.health.hediffSet.GetFirstHediffOfDef(Defs.H_Devotion);
+                var master = GC.I?.GetMaster(s);
+                string spec = GetSpec(s), status = s.health.hediffSet.HasHediff(Defs.H_Stockholm) ? "Stockholm" : s.health.hediffSet.HasHediff(Defs.H_HeadConcubine) ? "Head" : "-";
+
+                GUI.color = Defs.TierColor(tier);
+                Widgets.Label(new Rect(0, ly, 130, 24), s.LabelShort);
+                GUI.color = Color.white;
+                Widgets.Label(new Rect(130, ly, 70, 24), Defs.TierName(tier));
+                Widgets.Label(new Rect(200, ly, 70, 24), $"{(dev?.Severity ?? 0) * 100:F0}%");
+                Widgets.Label(new Rect(270, ly, 90, 24), spec);
+                Widgets.Label(new Rect(360, ly, 90, 24), master?.LabelShort ?? "-");
+                Widgets.Label(new Rect(460, ly, 80, 24), status);
+                ly += 26;
+            }
+            Widgets.EndScrollView();
+
+            // Actions
+            if (sel != null)
+            {
+                y = r.height - 88;
+                Widgets.DrawLineHorizontal(0, y, r.width); y += 5;
+                Widgets.Label(new Rect(0, y, 200, 22), $"Selected: {sel.LabelShort}"); y += 24;
+
+                if (Widgets.ButtonText(new Rect(0, y, 110, 26), "Assign Master"))
+                {
+                    var opts = new List<FloatMenuOption> { new("Unassign", () => GC.I?.SetConcubine(sel, null)) };
+                    foreach (var c in m.mapPawns.FreeColonists) opts.Add(new(c.LabelShort + (GC.I?.IsConcubine(sel, c) == true ? " ✓" : ""), () => GC.I?.SetConcubine(sel, c)));
+                    Find.WindowStack.Add(new FloatMenu(opts));
+                }
+
+                if (Defs.Tier(sel) >= 3 && SRI_Mod.S.enableSpecializations && Widgets.ButtonText(new Rect(120, y, 100, 26), "Specialize"))
+                {
+                    var opts = new List<FloatMenuOption>
+                    {
+                        new("Warrior", () => SetSpec(sel, Defs.H_Warrior)), new("Healer", () => SetSpec(sel, Defs.H_Healer)),
+                        new("Scholar", () => SetSpec(sel, Defs.H_Scholar)), new("Entertainer", () => SetSpec(sel, Defs.H_Entertainer)),
+                        new("Remove", () => ClearSpec(sel))
+                    };
+                    Find.WindowStack.Add(new FloatMenu(opts));
+                }
+
+                if (Widgets.ButtonText(new Rect(230, y, 70, 26), "Go To")) CameraJumper.TryJumpAndSelect(sel);
+                if (Widgets.ButtonText(new Rect(310, y, 100, 26), "Stockholm") && !sel.health.hediffSet.HasHediff(Defs.H_Stockholm)) sel.health.AddHediff(Defs.H_Stockholm);
+            }
+        }
+
+        string GetSpec(Pawn p) => p.health.hediffSet.HasHediff(Defs.H_Warrior) ? "Warrior" : p.health.hediffSet.HasHediff(Defs.H_Healer) ? "Healer" : p.health.hediffSet.HasHediff(Defs.H_Scholar) ? "Scholar" : p.health.hediffSet.HasHediff(Defs.H_Entertainer) ? "Entertainer" : "-";
+        void SetSpec(Pawn p, HediffDef h) { ClearSpec(p); p.health.AddHediff(h); }
+        void ClearSpec(Pawn p) { foreach (var h in new[] { Defs.H_Warrior, Defs.H_Healer, Defs.H_Scholar, Defs.H_Entertainer }) { var x = p.health.hediffSet.GetFirstHediffOfDef(h); if (x != null) p.health.RemoveHediff(x); } }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    //                              HARMONY PATCHES
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    // Gizmos
+    [HarmonyPatch(typeof(Pawn), "GetGizmos")]
+    public static class Patch_Gizmos
+    {
+        static IEnumerable<Gizmo> Postfix(IEnumerable<Gizmo> r, Pawn __instance)
+        {
+            foreach (var g in r) yield return g;
+            var p = __instance;
 
             // God abilities
-            // FIX: Added "&& !__instance.IsSlave" below. 
-            // This hides the skills immediately if they are enslaved, even if the trait isn't gone yet.
-            if (SRI_Main.IsGod(__instance) && !__instance.Dead && !__instance.Downed && !__instance.IsSlave)
+            if (Defs.IsGod(p) && !p.Dead && !p.Downed && !p.IsSlave && SRI_Mod.S.enableAbilities)
             {
-                foreach (Gizmo gizmo in GetGodAbilityGizmos(__instance))
-                    yield return gizmo;
+                var gc = GC.I; if (gc == null) yield break;
+
+                // Smite
+                var smite = new Command_Target { defaultLabel = gc.Ready(p, "smite") ? "Smite" : $"Smite ({gc.Remaining(p, "smite") / 2500f:F1}h)", defaultDesc = $"Dmg: {Defs.Pwr(p, 20, 5):F0}", icon = ContentFinder<Texture2D>.Get("UI/Commands/Attack"), targetingParams = new() { canTargetPawns = true, canTargetBuildings = false }, action = t => p.jobs.TryTakeOrderedJob(JobMaker.MakeJob(Defs.Job_Smite, t)) };
+                if (!gc.Ready(p, "smite")) smite.Disable("Cooldown");
+                yield return smite;
+
+                // Calm
+                var calm = new Command_Action { defaultLabel = gc.Ready(p, "calm") ? "Mass Calm" : $"Calm ({gc.Remaining(p, "calm") / 2500f:F1}h)", defaultDesc = "Calm slaves.", icon = ContentFinder<Texture2D>.Get("UI/Commands/Halt"), action = () => { foreach (var s in p.Map.mapPawns.SlavesOfColonySpawned.ToList().Where(x => x.Position.InHorDistOf(p.Position, Defs.Pwr(p, 10, 2)))) { if (s.InMentalState) s.MentalState.RecoverFromState(); FleckMaker.ThrowMetaIcon(s.Position, s.Map, FleckDefOf.Heart); } gc.SetCD(p, "calm", Defs.CD_Calm); } };
+                if (!gc.Ready(p, "calm")) calm.Disable("Cooldown");
+                yield return calm;
+
+                // Bless
+                var bless = new Command_Target { defaultLabel = gc.Ready(p, "bless") ? "Blessing" : $"Bless ({gc.Remaining(p, "bless") / 2500f:F1}h)", defaultDesc = "Buff ally.", icon = ContentFinder<Texture2D>.Get("UI/Commands/Draft"), targetingParams = new() { canTargetPawns = true, validator = t => t.Thing is Pawn x && x.Faction == Faction.OfPlayer }, action = t => { if (t.Thing is Pawn x) { x.health.AddHediff(Defs.H_Blessing); x.needs.mood.thoughts.memories.TryGainMemory(Defs.T_Blessed, p); (x.health.hediffSet.GetFirstHediffOfDef(Defs.H_Devotion) as Hediff_Devotion)?.Add(0.05f); FleckMaker.Static(x.Position, x.Map, FleckDefOf.PsycastAreaEffect, 2); gc.SetCD(p, "bless", Defs.CD_Bless); } } };
+                if (!gc.Ready(p, "bless")) bless.Disable("Cooldown");
+                yield return bless;
+
+                // Wrath
+                var wrath = new Command_Action { defaultLabel = gc.Ready(p, "wrath") ? "Wrath" : $"Wrath ({gc.Remaining(p, "wrath") / 2500f:F1}h)", defaultDesc = $"AoE Dmg: {Defs.Pwr(p, 15, 3):F0}", icon = ContentFinder<Texture2D>.Get("UI/Commands/FireAtWill"), action = () => { FleckMaker.Static(p.Position, p.Map, FleckDefOf.PsycastAreaEffect, 8); SoundDefOf.Thunder_OffMap.PlayOneShot(SoundInfo.InMap(new TargetInfo(p.Position, p.Map))); float dmg = Defs.Pwr(p, 15, 3); foreach (var e in p.Map.mapPawns.AllPawnsSpawned.ToList().Where(x => x != p && x.Position.InHorDistOf(p.Position, 8) && x.HostileTo(p))) e.TakeDamage(new DamageInfo(DamageDefOf.Burn, dmg, 0, -1, p)); gc.SetCD(p, "wrath", Defs.CD_Wrath); foreach (var s in p.Map.mapPawns.SlavesOfColonySpawned.ToList().Where(x => x.Position.InHorDistOf(p.Position, 20))) { s.needs.mood.thoughts.memories.TryGainMemory(Defs.T_Wrath); (s.health.hediffSet.GetFirstHediffOfDef(Defs.H_Devotion) as Hediff_Devotion)?.Add(0.02f); } } };
+                if (!gc.Ready(p, "wrath")) wrath.Disable("Cooldown");
+                yield return wrath;
             }
 
-            // Slave concubine assignment
-            if (__instance.IsSlaveOfColony && __instance.RaceProps.Humanlike)
+            // Slave gizmos
+            if (p.IsSlaveOfColony && p.RaceProps.Humanlike)
             {
-                yield return new Command_Action
-                {
-                    defaultLabel = "Assign Concubine",
-                    defaultDesc = "Assign this slave as a concubine to a master.",
-                    icon = ContentFinder<Texture2D>.Get("UI/Commands/ReleaseAnimals", true),
-                    action = delegate
-                    {
-                        List<FloatMenuOption> options = new List<FloatMenuOption>
-                        {
-                            new FloatMenuOption("Unassign", delegate
-                            {
-                                SRI_GameComponent.Instance?.SetConcubine(__instance, null);
-                            })
-                        };
-
-                        foreach (Pawn colonist in __instance.Map.mapPawns.FreeColonists)
-                        {
-                            bool isCurrent = SRI_GameComponent.Instance?.IsConcubineOf(__instance, colonist) == true;
-                            options.Add(new FloatMenuOption(
-                                colonist.LabelShort + (isCurrent ? " (Current)" : ""),
-                                delegate { SRI_GameComponent.Instance?.SetConcubine(__instance, colonist); }
-                            ));
-                        }
-
-                        Find.WindowStack.Add(new FloatMenu(options));
-                    }
-                };
-
-                // Show devotion info
-                int tier = SRI_Main.GetDevotionTier(__instance);
-                yield return new Command_Action
-                {
-                    defaultLabel = "Devotion: " + SRI_Main.GetDevotionTierName(tier),
-                    defaultDesc = "Current devotion tier. Higher tiers provide better buffs when near master.",
-                    icon = ContentFinder<Texture2D>.Get("UI/Commands/Draft", true),
-                    action = delegate { }
-                };
+                yield return new Command_Action { defaultLabel = "Assign", icon = ContentFinder<Texture2D>.Get("UI/Commands/ReleaseAnimals"), action = () => { var opts = new List<FloatMenuOption> { new("Unassign", () => GC.I?.SetConcubine(p, null)) }; foreach (var c in p.Map.mapPawns.FreeColonists.ToList()) opts.Add(new(c.LabelShort + (GC.I?.IsConcubine(p, c) == true ? " ✓" : ""), () => GC.I?.SetConcubine(p, c))); Find.WindowStack.Add(new FloatMenu(opts)); } };
+                yield return new Command_Action { defaultLabel = $"{Defs.TierName(Defs.Tier(p))}", icon = ContentFinder<Texture2D>.Get("UI/Commands/Draft"), action = () => { } };
             }
-        }
-
-        private static IEnumerable<Gizmo> GetGodAbilityGizmos(Pawn god)
-        {
-            SRI_GameComponent gc = SRI_GameComponent.Instance;
-            if (gc == null) yield break;
-
-            // Divine Smite
-            int smiteRemaining = gc.GetAbilityCooldownRemaining(god, "Smite");
-            Command_Target smiteCmd = new Command_Target
-            {
-                defaultLabel = smiteRemaining > 0 ? $"Smite ({smiteRemaining / 2500f:F1}h)" : "Divine Smite",
-                defaultDesc = $"Strike a target with divine lightning.\nDamage: {SRI_Main.CalculateAbilityPower(god, 20f, 5f):F0}",
-                icon = ContentFinder<Texture2D>.Get("UI/Commands/Attack", true),
-                targetingParams = new TargetingParameters { canTargetPawns = true, canTargetBuildings = false },
-                action = delegate (LocalTargetInfo target)
-                {
-                    Job j = JobMaker.MakeJob(SRI_Main.Job_DivineSmite, target);
-                    god.jobs.TryTakeOrderedJob(j, JobTag.Misc);
-                }
-            };
-            if (smiteRemaining > 0) smiteCmd.Disable("On cooldown");
-            yield return smiteCmd;
-
-            // Mass Calm
-            int calmRemaining = gc.GetAbilityCooldownRemaining(god, "MassCalm");
-            float calmRadius = SRI_Main.CalculateAbilityPower(god, 10f, 2f);
-            Command_Action calmCmd = new Command_Action
-            {
-                defaultLabel = calmRemaining > 0 ? $"Calm ({calmRemaining / 2500f:F1}h)" : "Mass Calm",
-                defaultDesc = $"Calm all slaves in radius, removing mental breaks.\nRadius: {calmRadius:F0} tiles",
-                icon = ContentFinder<Texture2D>.Get("UI/Commands/Halt", true),
-                action = delegate
-                {
-                    int calmed = 0;
-                    foreach (Pawn slave in god.Map.mapPawns.SlavesOfColonySpawned.ToList())
-                    {
-                        if (slave.Position.InHorDistOf(god.Position, calmRadius))
-                        {
-                            if (slave.InMentalState)
-                                slave.MentalState.RecoverFromState();
-
-                            slave.needs.mood.thoughts.memories.TryGainMemory(ThoughtDefOf.ArtifactMoodBoost);
-                            FleckMaker.ThrowMetaIcon(slave.Position, slave.Map, FleckDefOf.Heart);
-                            calmed++;
-                        }
-                    }
-                    gc.SetAbilityCooldown(god, "MassCalm", SRI_Main.COOLDOWN_MASS_CALM);
-                    Messages.Message($"Calmed {calmed} slaves.", god, MessageTypeDefOf.PositiveEvent, true);
-                }
-            };
-            if (calmRemaining > 0) calmCmd.Disable("On cooldown");
-            yield return calmCmd;
-
-            // Divine Blessing
-            int blessRemaining = gc.GetAbilityCooldownRemaining(god, "Blessing");
-            Command_Target blessCmd = new Command_Target
-            {
-                defaultLabel = blessRemaining > 0 ? $"Bless ({blessRemaining / 2500f:F1}h)" : "Divine Blessing",
-                defaultDesc = "Grant a powerful blessing to a pawn, boosting their abilities.",
-                icon = ContentFinder<Texture2D>.Get("UI/Commands/ReleaseAnimals", true),
-                targetingParams = new TargetingParameters
-                {
-                    canTargetPawns = true,
-                    canTargetBuildings = false,
-                    validator = (TargetInfo t) => t.Thing is Pawn p && p.Faction == Faction.OfPlayer
-                },
-                action = delegate (LocalTargetInfo target)
-                {
-                    if (target.Thing is Pawn targetPawn)
-                    {
-                        targetPawn.health.AddHediff(SRI_Main.Hediff_DivineBlessing);
-                        targetPawn.needs.mood.thoughts.memories.TryGainMemory(SRI_Main.Thought_ReceivedBlessing, god);
-
-                        if (targetPawn.IsSlaveOfColony)
-                        {
-                            Hediff devotion = targetPawn.health.hediffSet.GetFirstHediffOfDef(SRI_Main.Hediff_Devotion);
-                            if (devotion is Hediff_Devotion dev)
-                                dev.AddDevotion(0.05f);
-                        }
-
-                        FleckMaker.Static(targetPawn.Position, targetPawn.Map, FleckDefOf.PsycastAreaEffect, 2f);
-                        gc.SetAbilityCooldown(god, "Blessing", SRI_Main.COOLDOWN_BLESSING);
-                        Messages.Message($"{targetPawn.LabelShort} received divine blessing!", targetPawn, MessageTypeDefOf.PositiveEvent, true);
-                    }
-                }
-            };
-            if (blessRemaining > 0) blessCmd.Disable("On cooldown");
-            yield return blessCmd;
-
-            // Wrath of God
-            int wrathRemaining = gc.GetAbilityCooldownRemaining(god, "Wrath");
-            float wrathDamage = SRI_Main.CalculateAbilityPower(god, 15f, 3f);
-            Command_Action wrathCmd = new Command_Action
-            {
-                defaultLabel = wrathRemaining > 0 ? $"Wrath ({wrathRemaining / 2500f:F1}h)" : "Divine Wrath",
-                defaultDesc = $"Unleash devastating AoE damage around the God.\nDamage: {wrathDamage:F0} in 8 tile radius",
-                icon = ContentFinder<Texture2D>.Get("UI/Commands/FireAtWill", true),
-                action = delegate
-                {
-                    // Visual
-                    FleckMaker.Static(god.Position, god.Map, FleckDefOf.PsycastAreaEffect, 8f);
-                    SoundDefOf.Thunder_OffMap.PlayOneShot(SoundInfo.InMap(new TargetInfo(god.Position, god.Map)));
-
-                    // Damage enemies
-                    int hit = 0;
-                    foreach (Pawn target in god.Map.mapPawns.AllPawnsSpawned.ToList())
-                    {
-                        if (target == god) continue;
-                        if (!target.Position.InHorDistOf(god.Position, 8f)) continue;
-                        if (!target.HostileTo(god)) continue;
-
-                        DamageInfo dinfo = new DamageInfo(DamageDefOf.Burn, wrathDamage, 0f, -1f, god);
-                        target.TakeDamage(dinfo);
-                        hit++;
-                    }
-
-                    gc.SetAbilityCooldown(god, "Wrath", SRI_Main.COOLDOWN_WRATH);
-                    MoteMaker.ThrowText(god.DrawPos, god.Map, "DIVINE WRATH!", Color.yellow);
-
-                    // Boost devotion of witnesses
-                    foreach (Pawn slave in god.Map.mapPawns.SlavesOfColonySpawned.ToList())
-                    {
-                        if (slave.Position.InHorDistOf(god.Position, 20f))
-                        {
-                            slave.needs.mood.thoughts.memories.TryGainMemory(SRI_Main.Thought_WitnessedDivineWrath);
-                            Hediff devotion = slave.health.hediffSet.GetFirstHediffOfDef(SRI_Main.Hediff_Devotion);
-                            if (devotion is Hediff_Devotion dev)
-                                dev.AddDevotion(0.02f);
-                        }
-                    }
-                }
-            };
-            if (wrathRemaining > 0) wrathCmd.Disable("On cooldown");
-            yield return wrathCmd;
         }
     }
 
-    // Float menu options
+    // Float menu
     [HarmonyPatch(typeof(FloatMenuMakerMap), "AddHumanlikeOrders")]
-    public static class Patch_FloatMenuMakerMap
+    public static class Patch_Float
     {
-        public static void Postfix(Vector3 clickPos, Pawn pawn, List<FloatMenuOption> opts)
+        static void Postfix(Vector3 clickPos, Pawn pawn, List<FloatMenuOption> opts)
         {
             if (!pawn.IsColonistPlayerControlled) return;
-
-            foreach (LocalTargetInfo t in GenUI.TargetsAt(clickPos, TargetingParameters.ForPawns(), true))
+            foreach (var t in GenUI.TargetsAt(clickPos, TargetingParameters.ForPawns()))
             {
-                Pawn v = t.Pawn;
-                if (v == null || v == pawn) continue;
-
-                // Slave lovin
-                if (v.IsSlaveOfColony)
+                if (t.Pawn is Pawn v && v != pawn)
                 {
-                    opts.Add(new FloatMenuOption("Take " + v.LabelShort + " to bed (Lovin')", delegate
-                    {
-                        StartLovinScene(pawn, v);
-                    }));
-                }
-
-                // Punish
-                if (v.IsSlaveOfColony || v.IsPrisonerOfColony)
-                {
-                    int cooldown = (SRI_GameComponent.Instance?.GetPunishUnlockTick(v) ?? 0) - Find.TickManager.TicksGame;
-                    if (cooldown > 0)
-                    {
-                        FloatMenuOption disabled = new FloatMenuOption($"Punish (Cooldown {cooldown / 2500}h)", null);
-                        disabled.Disabled = true;
-                        opts.Add(disabled);
-                    }
-                    else
-                    {
-                        opts.Add(new FloatMenuOption("Punish " + v.LabelShort, delegate
-                        {
-                            StartPunishment(pawn, v);
-                        }));
-                    }
-                }
-
-                // Procure
-                if (!v.IsPrisoner && !v.IsSlave && !v.IsColonist && v.RaceProps.Humanlike && !v.HostileTo(pawn))
-                {
-                    bool hasBed = pawn.Map.listerBuildings.AllBuildingsColonistOfClass<Building_Bed>()
-                        .Any(b => b.ForPrisoners && !b.Medical && b.AnyUnownedSleepingSlot);
-
-                    if (!hasBed)
-                    {
-                        FloatMenuOption disabled = new FloatMenuOption("Procure (No Bed)", null);
-                        disabled.Disabled = true;
-                        opts.Add(disabled);
-                    }
-                    else
-                    {
-                        float chance = Mathf.Clamp01(0.10f + (pawn.skills.GetSkill(SkillDefOf.Social).Level * 0.045f)) * 100f;
-                        opts.Add(new FloatMenuOption($"Procure {v.LabelShort} ({chance:F0}%)", delegate
-                        {
-                            StartProcure(pawn, v);
-                        }));
-                    }
-                }
-
-                // Resurrection (for devoted slaves near dead god)
-                if (v.Dead && SRI_Main.IsGod(v) && pawn.IsSlaveOfColony && SRI_Main.GetDevotionTier(pawn) >= 3)
-                {
-                    if (SRI_GameComponent.Instance?.CanResurrect(v) == true)
-                    {
-                        opts.Add(new FloatMenuOption("Begin Resurrection Ritual", delegate
-                        {
-                            Job j = JobMaker.MakeJob(SRI_Main.Job_ResurrectionRitual, v.Corpse);
-                            pawn.jobs.TryTakeOrderedJob(j, JobTag.Misc);
-                        }));
-                    }
-                    else
-                    {
-                        opts.Add(new FloatMenuOption($"Gather corpses for resurrection (need {SRI_Main.MIN_CORPSES_FOR_RESURRECTION})", delegate
-                        {
-                            // Find nearest corpse
-                            Corpse corpse = (Corpse)GenClosest.ClosestThing_Global(pawn.Position,
-                                pawn.Map.listerThings.ThingsInGroup(ThingRequestGroup.Corpse),
-                                50f, c => c != v.Corpse);
-
-                            if (corpse != null)
-                            {
-                                Job j = JobMaker.MakeJob(SRI_Main.Job_GatherCorpse, corpse, v.Corpse);
-                                pawn.jobs.TryTakeOrderedJob(j, JobTag.Misc);
-                            }
-                        }));
-                    }
-                }
-            }
-        }
-
-        static void StartLovinScene(Pawn m, Pawn s)
-        {
-            if (m.Drafted) m.drafter.Drafted = false;
-            if (s.Drafted) s.drafter.Drafted = false;
-            m.jobs.EndCurrentJob(JobCondition.InterruptForced, true);
-            s.jobs.EndCurrentJob(JobCondition.InterruptForced, true);
-
-            Building_Bed bed = (Building_Bed)GenClosest.ClosestThing_Global(m.Position,
-                m.Map.listerBuildings.AllBuildingsColonistOfClass<Building_Bed>(), 9999f,
-                x => ((Building_Bed)x).SleepingSlotsCount >= 2 && !((Building_Bed)x).IsBurning());
-
-            if (bed == null)
-            {
-                Messages.Message("No suitable bed found!", MessageTypeDefOf.RejectInput, false);
-                return;
-            }
-
-            Job jm = JobMaker.MakeJob(SRI_Main.Job_SlaveLovin, bed, s);
-            jm.playerForced = true;
-            m.jobs.TryTakeOrderedJob(jm, JobTag.Misc);
-
-            Job js = JobMaker.MakeJob(SRI_Main.Job_SlaveLovin, bed, m);
-            js.playerForced = true;
-            s.jobs.TryTakeOrderedJob(js, JobTag.Misc);
-        }
-
-        static void StartPunishment(Pawn m, Pawn v)
-        {
-            if (m.Drafted) m.drafter.Drafted = false;
-            Job j = JobMaker.MakeJob(SRI_Main.Job_PunishSlave, v);
-            j.playerForced = true;
-            m.jobs.TryTakeOrderedJob(j, JobTag.Misc);
-        }
-
-        static void StartProcure(Pawn m, Pawn v)
-        {
-            if (m.Drafted) m.drafter.Drafted = false;
-            Job j = JobMaker.MakeJob(SRI_Main.Job_Procure, v);
-            j.playerForced = true;
-            m.jobs.TryTakeOrderedJob(j, JobTag.Misc);
-        }
-    }
-
-    // Protective Rage + Divine Shield
-    [HarmonyPatch(typeof(Pawn), "PreApplyDamage")]
-    public static class Patch_InstantRage
-    {
-        public static void Prefix(Pawn __instance, ref DamageInfo dinfo, out bool __state)
-        {
-            __state = false;
-            if (__instance.IsColonist && !__instance.Dead && dinfo.Instigator != null && dinfo.Instigator != __instance)
-                __state = true;
-        }
-
-        public static void Postfix(Pawn __instance, ref DamageInfo dinfo, bool __state)
-        {
-            if (!__state) return;
-
-            bool isEnemy = dinfo.Instigator.HostileTo(__instance) ||
-                (dinfo.Instigator is Pawn att && (att.IsPrisoner || att.InAggroMentalState));
-            if (!isEnemy && dinfo.Instigator is Pawn animal && animal.RaceProps.Animal)
-                isEnemy = true;
-
-            if (!isEnemy) return;
-
-            // Check for Divine Shield first (for Gods)
-            if (SRI_Main.IsGod(__instance))
-            {
-                // Find a Tier 3+ slave with ready shield
-                foreach (Pawn slave in __instance.Map.mapPawns.SlavesOfColonySpawned.ToList())
-                {
-                    if (SRI_GameComponent.Instance?.IsConcubineOf(slave, __instance) != true) continue;
-                    if (SRI_Main.GetDevotionTier(slave) < 3) continue;
-                    if (!slave.health.hediffSet.HasHediff(SRI_Main.Hediff_Stockholm)) continue;
-                    if (slave.Dead || slave.Downed) continue;
-                    if (!slave.Position.InHorDistOf(__instance.Position, 8f)) continue;
-                    if (SRI_GameComponent.Instance?.IsShieldReady(slave) != true) continue;
-
-                    // Activate Divine Shield!
-                    Hediff_DivineShield shield = (Hediff_DivineShield)slave.health.hediffSet.GetFirstHediffOfDef(SRI_Main.Hediff_DivineShield);
-                    if (shield == null)
-                    {
-                        shield = (Hediff_DivineShield)HediffMaker.MakeHediff(SRI_Main.Hediff_DivineShield, slave);
-                        shield.protectedMaster = __instance;
-                        slave.health.AddHediff(shield);
-                    }
-
-                    if (shield.TryBlockAttack(dinfo, out float damageToSlave))
-                    {
-                        // Block successful!
-                        dinfo.SetAmount(0f);
-
-                        // Slave takes reduced damage
-                        if (damageToSlave > 0)
-                        {
-                            DamageInfo slaveDamage = new DamageInfo(dinfo.Def, damageToSlave, 0f, -1f, dinfo.Instigator);
-                            slave.TakeDamage(slaveDamage);
-                        }
-
-                        SRI_GameComponent.Instance?.SetShieldCooldown(slave);
-
-                        // Remove shield hediff after use
-                        slave.health.RemoveHediff(shield);
-
-                        Messages.Message($"{slave.LabelShort} blocked an attack on {__instance.LabelShort}!", slave, MessageTypeDefOf.PositiveEvent, true);
-
-                        // Only one shield per attack
-                        break;
-                    }
-                }
-            }
-
-            // Trigger Protective Rage for concubines
-            foreach (Pawn slave in __instance.MapHeld.mapPawns.SlavesOfColonySpawned.ToList())
-            {
-                if (SRI_GameComponent.Instance?.IsConcubineOf(slave, __instance) != true) continue;
-                if (!slave.health.hediffSet.HasHediff(SRI_Main.Hediff_Stockholm)) continue;
-                if (slave.Dead || slave.Downed) continue;
-
-                // Already attacking this target?
-                if (slave.CurJobDef == JobDefOf.AttackMelee && slave.CurJob.targetA.Thing == dinfo.Instigator) continue;
-
-                // Add/refresh rage
-                Hediff rage = slave.health.hediffSet.GetFirstHediffOfDef(SRI_Main.Hediff_ProtectiveRage);
-                if (rage != null) slave.health.RemoveHediff(rage);
-                slave.health.AddHediff(SRI_Main.Hediff_ProtectiveRage);
-
-                if (rage == null)
-                    Messages.Message($"{slave.LabelShort} protects {__instance.LabelShort}!", slave, MessageTypeDefOf.ThreatBig, true);
-
-                // Force attack
-                if (slave.Drafted) slave.drafter.Drafted = false;
-                slave.jobs.EndCurrentJob(JobCondition.InterruptForced, true);
-                slave.jobs.ClearQueuedJobs();
-
-                Job atk = JobMaker.MakeJob(JobDefOf.AttackMelee, dinfo.Instigator);
-                atk.playerForced = true;
-                atk.expiryInterval = 2000;
-                atk.killIncappedTarget = true;
-                slave.jobs.TryTakeOrderedJob(atk, JobTag.Misc);
-            }
-        }
-    }
-
-    // Track God death for resurrection
-    [HarmonyPatch(typeof(Pawn), "Kill")]
-    public static class Patch_GodDeath
-    {
-        public static void Postfix(Pawn __instance)
-        {
-            if (SRI_Main.IsGod(__instance))
-            {
-                SRI_GameComponent.Instance?.RegisterGodDeath(__instance);
-            }
-        }
-    }
-
-    // Proximity stat bonuses for devoted slaves AND God scaling
-    [HarmonyPatch(typeof(StatExtension), "GetStatValue")]
-    public static class Patch_DevotionStats
-    {
-        public static void Postfix(Thing thing, StatDef stat, ref float __result)
-        {
-            if (!(thing is Pawn pawn)) return;
-
-            // --- GOD'S DIVINE POWER SCALING ---
-            Hediff divine = pawn.health?.hediffSet?.GetFirstHediffOfDef(SRI_Main.Hediff_DivinePower);
-            if (divine != null)
-            {
-                int count = (int)divine.Severity;
-                if (count > 0)
-                {
-                    // Existing stats
-                    if (stat == StatDefOf.MoveSpeed) __result *= (1f + (count * 0.05f));
-                    else if (stat == StatDefOf.MeleeDamageFactor) __result += (count * 0.10f);
-                    else if (stat == StatDefOf.ResearchSpeed) __result += (count * 0.10f);
-                    else if (stat == StatDefOf.PsychicSensitivity) __result += (count * 0.10f);
-                    
-                    // NEW ADDITIONS
-                    else if (stat == StatDefOf.MeleeDodgeChance) __result += (count * 0.05f);   // +5% Dodge per slave
-                    else if (stat == StatDefOf.WorkSpeedGlobal) __result += (count * 0.10f);    // +10% All Work Speed
-                    else if (stat == StatDefOf.NegotiationAbility) __result += (count * 0.10f); // +10% Negotiation
-                }
-            }
-
-            // --- SLAVE DEVOTION BUFFS ---
-            if (pawn.IsSlaveOfColony)
-            {
-                Pawn master = SRI_GameComponent.Instance?.GetMasterOf(pawn);
-                if (master != null && !master.Dead && pawn.Map == master.Map &&
-                    pawn.Position.InHorDistOf(master.Position, 15f))
-                {
-                    int tier = SRI_Main.GetDevotionTier(pawn);
-                    if (tier > 0)
-                    {
-                        if (stat == StatDefOf.WorkSpeedGlobal)
-                        {
-                            float bonus = tier switch { 1 => 0.05f, 2 => 0.10f, 3 => 0.15f, 4 => 0.25f, _ => 0f };
-                            __result += bonus;
-                        }
-                        else if (stat == StatDefOf.MoveSpeed)
-                        {
-                            float bonus = tier switch { 1 => 0.05f, 2 => 0.10f, 3 => 0.15f, 4 => 0.20f, _ => 0f };
-                            __result *= (1f + bonus);
-                        }
-                        else if (stat == StatDefOf.MeleeDamageFactor)
-                        {
-                            float bonus = tier switch { 1 => 0.05f, 2 => 0.10f, 3 => 0.20f, 4 => 0.30f, _ => 0f };
-                            __result += bonus;
-                        }
-                        else if (stat == StatDefOf.MeleeDodgeChance)
-                        {
-                            float bonus = tier switch { 1 => 0f, 2 => 0.05f, 3 => 0.10f, 4 => 0.15f, _ => 0f };
-                            __result += bonus;
-                        }
-                    }
+                    if (v.IsSlaveOfColony) opts.Add(new($"Lovin' {v.LabelShort}", () => { var bed = pawn.Map.listerBuildings.AllBuildingsColonistOfClass<Building_Bed>().FirstOrDefault(b => b.SleepingSlotsCount >= 2 && !b.IsBurning()); if (bed == null) { Messages.Message("No bed!", MessageTypeDefOf.RejectInput); return; } if (pawn.Drafted) pawn.drafter.Drafted = false; if (v.Drafted) v.drafter.Drafted = false; pawn.jobs.TryTakeOrderedJob(JobMaker.MakeJob(Defs.Job_Lovin, bed, v)); v.jobs.TryTakeOrderedJob(JobMaker.MakeJob(Defs.Job_Lovin, bed, pawn)); }));
+                    if (v.IsSlaveOfColony || v.IsPrisonerOfColony) { int cd = GC.I?.Remaining(v, "punish") ?? 0; if (cd > 0) opts.Add(new($"Punish (CD {cd / 2500}h)", null) { Disabled = true }); else opts.Add(new($"Punish {v.LabelShort}", () => { if (pawn.Drafted) pawn.drafter.Drafted = false; pawn.jobs.TryTakeOrderedJob(JobMaker.MakeJob(Defs.Job_Punish, v)); })); }
+                    if (!v.IsPrisoner && !v.IsSlave && !v.IsColonist && v.RaceProps.Humanlike && !v.HostileTo(pawn)) opts.Add(new($"Procure {v.LabelShort} ({(0.1f + pawn.skills.GetSkill(SkillDefOf.Social).Level * 0.045f) * 100:F0}%)", () => { if (pawn.Drafted) pawn.drafter.Drafted = false; pawn.jobs.TryTakeOrderedJob(JobMaker.MakeJob(Defs.Job_Procure, v)); }));
+                    if (v.Dead && Defs.IsGod(v) && GC.I?.CanRes(v) == true && SRI_Mod.S.enableResurrection && Defs.Tier(pawn) >= 3 && v.Corpse != null) { int hp = GC.I.GetHP(v); if (hp >= 30) opts.Add(new($"Resurrect ({hp} HP)", () => pawn.jobs.TryTakeOrderedJob(JobMaker.MakeJob(Defs.Job_Resurrect, v.Corpse)))); else opts.Add(new($"Gather corpses ({hp}/30)", () => { var c = GenClosest.ClosestThing_Global(pawn.Position, pawn.Map.listerThings.ThingsInGroup(ThingRequestGroup.Corpse), 50, x => x != v.Corpse) as Corpse; if (c != null) pawn.jobs.TryTakeOrderedJob(JobMaker.MakeJob(Defs.Job_GatherCorpse, c, v.Corpse)); })); }
                 }
             }
         }
     }
 
-    // Stockholm prevents suppression decay
-    [HarmonyPatch(typeof(Need_Suppression), "NeedInterval")]
-    public static class Patch_Suppression_Stockholm
-    {
-        public static bool Prefix(Need_Suppression __instance, Pawn ___pawn)
-        {
-            if (___pawn.health.hediffSet.HasHediff(SRI_Main.Hediff_Stockholm))
-            {
-                __instance.CurLevel = __instance.MaxLevel;
-                return false;
-            }
-            return true;
-        }
-    }
-
-    // God can't use ranged weapons
-    [HarmonyPatch]
-    public static class Patch_GodWeapons
-    {
-        static MethodBase TargetMethod()
-        {
-            return AccessTools.Method(typeof(EquipmentUtility), "CanEquip",
-                new Type[] { typeof(Thing), typeof(Pawn), typeof(string).MakeByRefType(), typeof(bool) });
-        }
-
-        public static bool Prefix(Thing thing, Pawn pawn, ref string cantReason, ref bool __result)
-        {
-            if (SRI_Main.IsGod(pawn) && thing.def.IsRangedWeapon)
-            {
-                cantReason = "The God refuses to use such weapons.";
-                __result = false;
-                return false;
-            }
-            return true;
-        }
-    }
-
-    // Bullet reflection
-    [HarmonyPatch(typeof(Projectile), "Impact")]
-    public static class Patch_Projectile_Impact
-    {
-        public static bool Prefix(Projectile __instance, Thing hitThing)
-        {
-            if (hitThing is Pawn pawn && SRI_Main.IsGod(pawn))
-            {
-                int slaveCount = pawn.Map?.mapPawns.SlavesOfColonySpawned.Count ?? 0;
-                float chance = Mathf.Min(0.20f + (slaveCount * 0.05f), 0.80f);
-
-                if (Rand.Chance(chance))
-                {
-                    MoteMaker.ThrowText(pawn.DrawPos, pawn.Map, "REFLECT!", Color.yellow);
-                    SoundDefOf.MetalHitImportant.PlayOneShot(SoundInfo.InMap(new TargetInfo(pawn.Position, pawn.Map)));
-
-                    Thing launcher = __instance.Launcher;
-                    if (launcher is Pawn shooter && !shooter.Dead)
-                    {
-                        float dmg = (float)__instance.def.projectile.GetDamageAmount(null);
-                        DamageInfo dinfo = new DamageInfo(__instance.def.projectile.damageDef, dmg, 0f, -1f, pawn);
-                        shooter.TakeDamage(dinfo);
-                        MoteMaker.ThrowText(shooter.DrawPos, shooter.Map, "Karma!", Color.red);
-                    }
-                    return false;
-                }
-            }
-            return true;
-        }
-    }
-
-    // Hybrid bed mechanics
+    // Bed gizmos
     [HarmonyPatch(typeof(Building_Bed), "GetGizmos")]
-    public static class Patch_Bed_GetGizmos
+    public static class Patch_BedGiz
     {
-        public static IEnumerable<Gizmo> Postfix(IEnumerable<Gizmo> __result, Building_Bed __instance)
+        static IEnumerable<Gizmo> Postfix(IEnumerable<Gizmo> r, Building_Bed __instance)
         {
-            foreach (var g in __result) yield return g;
-
+            foreach (var g in r) yield return g;
             if (__instance.Faction == Faction.OfPlayer && __instance.SleepingSlotsCount >= 2)
-            {
-                yield return new Command_Toggle
-                {
-                    defaultLabel = "Master & Slave Mode",
-                    defaultDesc = "Allow both colonists and slaves to share this bed.",
-                    // Use a guaranteed vanilla icon to avoid crash
-                    icon = ContentFinder<Texture2D>.Get("UI/Commands/ForPrisoners", true), 
-                    isActive = () => SRI_GameComponent.Instance?.IsHybrid(__instance) == true,
-                    toggleAction = delegate
-                    {
-                        if (SRI_GameComponent.Instance != null)
-                        {
-                            bool newState = !SRI_GameComponent.Instance.IsHybrid(__instance);
-                            SRI_GameComponent.Instance.SetHybrid(__instance, newState);
-                            foreach (Pawn p in __instance.CompAssignableToPawn.AssignedPawns.ToList())
-                                __instance.CompAssignableToPawn.TryUnassignPawn(p);
-                        }
-                    }
-                };
-            }
+                yield return new Command_Toggle { defaultLabel = "Master+Slave", icon = ContentFinder<Texture2D>.Get("UI/Commands/ForPrisoners"), isActive = () => GC.I?.IsHybrid(__instance) == true, toggleAction = () => { GC.I?.SetHybrid(__instance, !GC.I?.IsHybrid(__instance) == true); foreach (var p in __instance.CompAssignableToPawn.AssignedPawns.ToList()) __instance.CompAssignableToPawn.TryUnassignPawn(p); } };
         }
     }
+
+    // Bed validity - Applied manually in Defs static constructor
+    public static class Patch_BedValid
+    {
+        public static bool Prefix(Thing bedThing, Pawn sleeper, ref bool __result) { if (bedThing is Building_Bed bed && GC.I?.IsHybrid(bed) == true) { if (bed.Destroyed || bed.IsBurning() || bed.IsForbidden(sleeper)) return true; if (bed.Medical && !HealthAIUtility.ShouldSeekMedicalRest(sleeper)) return true; if ((sleeper.IsSlaveOfColony || sleeper.IsColonist) && (bed.CompAssignableToPawn.AssignedPawns.Contains(sleeper) || bed.AnyUnownedSleepingSlot)) { __result = true; return false; } } return true; }
+    }
+
+    [HarmonyPatch(typeof(ForbidUtility), "IsForbidden", new[] { typeof(Thing), typeof(Pawn) })]
+    public static class Patch_Forbid { static bool Prefix(Thing t, Pawn pawn, ref bool __result) { if (pawn.IsSlaveOfColony && t is Building_Bed bed && GC.I?.IsHybrid(bed) == true) { __result = false; return false; } return true; } }
 
     [HarmonyPatch]
-    public static class Patch_IsValidBedFor
-    {
-        static MethodBase TargetMethod()
-        {
-            return AccessTools.GetDeclaredMethods(typeof(RestUtility))
-                .Where(m => m.Name == "IsValidBedFor")
-                .OrderByDescending(m => m.GetParameters().Length)
-                .First();
-        }
-
-        public static bool Prefix(Thing bedThing, Pawn sleeper, ref bool __result)
-        {
-            if (bedThing is Building_Bed bed && SRI_GameComponent.Instance?.IsHybrid(bed) == true)
-            {
-                // 1. Basic Safety Checks (Must pass these)
-                if (bed.Destroyed || bed.IsBurning() || bed.IsForbidden(sleeper)) return true; // Let vanilla handle false
-
-                // 2. Medical Check: If bed is medical, pawn MUST be sick/injured
-                if (bed.Medical && !HealthAIUtility.ShouldSeekMedicalRest(sleeper)) return true; // Let vanilla handle false
-
-                // 3. Ownership Check (The Cause of your Crash)
-                // Only return TRUE if the pawn is ALREADY assigned or there is an EMPTY slot.
-                // If the bed is full of other people, we must not force it to be valid.
-                bool isOwner = bed.CompAssignableToPawn.AssignedPawns.Contains(sleeper);
-                bool hasSpace = bed.AnyUnownedSleepingSlot;
-
-                if ((sleeper.IsSlaveOfColony || sleeper.IsColonist) && (isOwner || hasSpace))
-                {
-                    __result = true;
-                    return false; // Skip vanilla logic (which blocks slaves)
-                }
-            }
-            return true; // Fallback to vanilla
-        }
-    }
-
-    [HarmonyPatch(typeof(ForbidUtility), "IsForbidden", new Type[] { typeof(Thing), typeof(Pawn) })]
-    public static class Patch_IsForbidden
-    {
-        public static bool Prefix(Thing t, Pawn pawn, ref bool __result)
-        {
-            if (pawn.IsSlaveOfColony && t is Building_Bed bed && SRI_GameComponent.Instance?.IsHybrid(bed) == true)
-            {
-                __result = false;
-                return false;
-            }
-            return true;
-        }
-    }
-
-    [HarmonyPatch(typeof(CompAssignableToPawn), "CanAssignTo")]
-    public static class Patch_CanAssignTo
-    {
-        public static void Postfix(CompAssignableToPawn __instance, Pawn pawn, ref AcceptanceReport __result)
-        {
-            if (!__result.Accepted && __instance.parent is Building_Bed bed && SRI_GameComponent.Instance?.IsHybrid(bed) == true)
-            {
-                if (pawn.IsSlaveOfColony || pawn.IsColonist)
-                    __result = AcceptanceReport.WasAccepted;
-            }
-        }
+    public static class Patch_Assign { 
+        static bool Prepare() => AccessTools.Method(typeof(CompAssignableToPawn), "CanAssignTo") != null;
+        static MethodBase TargetMethod() => AccessTools.Method(typeof(CompAssignableToPawn), "CanAssignTo");
+        static void Postfix(CompAssignableToPawn __instance, Pawn pawn, ref AcceptanceReport __result) { if (!__result.Accepted && __instance.parent is Building_Bed bed && GC.I?.IsHybrid(bed) == true && (pawn.IsSlaveOfColony || pawn.IsColonist)) __result = AcceptanceReport.WasAccepted; } 
     }
 
     [HarmonyPatch(typeof(BedUtility), "WillingToShareBed")]
-    public static class Patch_WillingToShareBed
-    {
-        public static void Postfix(Pawn pawn1, Pawn pawn2, ref bool __result)
-        {
-            if (!__result && ((pawn1.IsSlaveOfColony && pawn2.IsColonist) || (pawn2.IsSlaveOfColony && pawn1.IsColonist)))
-            {
-                Building_Bed bed1 = pawn1.ownership.OwnedBed;
-                Building_Bed bed2 = pawn2.ownership.OwnedBed;
-                if (bed1 != null && bed2 != null && bed1 == bed2 && SRI_GameComponent.Instance?.IsHybrid(bed1) == true)
-                    __result = true;
-            }
-        }
-    }
+    public static class Patch_Share { static void Postfix(Pawn pawn1, Pawn pawn2, ref bool __result) { if (!__result && ((pawn1.IsSlaveOfColony && pawn2.IsColonist) || (pawn2.IsSlaveOfColony && pawn1.IsColonist))) { var b1 = pawn1.ownership.OwnedBed; var b2 = pawn2.ownership.OwnedBed; if (b1 != null && b1 == b2 && GC.I?.IsHybrid(b1) == true) __result = true; } } }
 
     [HarmonyPatch(typeof(LovePartnerRelationUtility), "LovePartnerRelationExists")]
-    public static class Patch_FakeLoveRelation
+    public static class Patch_Love { static void Postfix(Pawn first, Pawn second, ref bool __result) { if (!__result && ((first.IsSlaveOfColony && second.IsColonist) || (second.IsSlaveOfColony && first.IsColonist))) { var b1 = first.ownership.OwnedBed; var b2 = second.ownership.OwnedBed; if (b1 != null && b1 == b2 && GC.I?.IsHybrid(b1) == true) __result = true; } } }
+
+    // God mechanics - Applied manually in Defs static constructor
+    public static class Patch_NoGuns
     {
-        public static void Postfix(Pawn first, Pawn second, ref bool __result)
+        public static bool Prefix(Thing thing, Pawn pawn, ref string cantReason, ref bool __result) { if (Defs.IsGod(pawn) && thing.def.IsRangedWeapon) { cantReason = "God refuses guns."; __result = false; return false; } return true; }
+    }
+
+    [HarmonyPatch(typeof(Projectile), "Impact")]
+    public static class Patch_Deflect
+    {
+        static bool Prefix(Projectile __instance, Thing hitThing)
         {
-            if (!__result && ((first.IsSlaveOfColony && second.IsColonist) || (second.IsSlaveOfColony && first.IsColonist)))
-            {
-                Building_Bed bed1 = first.ownership.OwnedBed;
-                Building_Bed bed2 = second.ownership.OwnedBed;
-                if (bed1 != null && bed2 != null && bed1 == bed2 && SRI_GameComponent.Instance?.IsHybrid(bed1) == true)
-                    __result = true;
-            }
+            // Use CACHED slave count - NO pawn list access!
+            if (hitThing is Pawn p && Defs.IsGod(p)) { int s = GC.I?.CachedSlaveCount ?? 0; if (Rand.Chance(Mathf.Min(0.2f + s * 0.05f, 0.8f))) { MoteMaker.ThrowText(p.DrawPos, p.Map, "DEFLECT!", Color.yellow); SoundDefOf.MetalHitImportant.PlayOneShot(SoundInfo.InMap(new TargetInfo(p.Position, p.Map))); if (__instance.Launcher is Pawn shooter && !shooter.Dead) shooter.TakeDamage(new DamageInfo(__instance.def.projectile.damageDef, __instance.def.projectile.GetDamageAmount(null), 0, -1, p)); return false; } }
+            return true;
         }
     }
 
-    #endregion
+    [HarmonyPatch(typeof(StatExtension), "GetStatValue")]
+    public static class Patch_Stats
+    {
+        static void Postfix(Thing thing, StatDef stat, ref float __result)
+        {
+            try
+            {
+                if (thing is Pawn p && p.Spawned && !p.Dead)
+                {
+                    var div = p.health?.hediffSet?.GetFirstHediffOfDef(Defs.H_Divine);
+                    if (div != null) { int c = (int)div.Severity; if (stat == StatDefOf.MoveSpeed) __result *= 1 + c * 0.05f; else if (stat == StatDefOf.MeleeDamageFactor) __result += c * 0.1f; else if (stat == StatDefOf.ResearchSpeed) __result += c * 0.1f; }
+                    
+                    var dev = p.health?.hediffSet?.GetFirstHediffOfDef(Defs.H_Devotion);
+                    if (dev != null && GC.I != null) 
+                    { 
+                        // Use CACHED master ID - NO pawn list iteration!
+                        int masterId = GC.I.GetCachedMasterId(p);
+                        if (masterId > 0)
+                        {
+                            // Check proximity using cached hediff's master reference
+                            var devHediff = dev as Hediff_Devotion;
+                            // Just use tier bonus based on cached data, don't iterate pawns
+                            int t = Defs.Tier(p); 
+                            if (t > 0)
+                            {
+                                // Apply tier bonuses (proximity check skipped for safety during stat calc)
+                                if (stat == StatDefOf.WorkSpeedGlobal) __result += t * 0.03f; 
+                                if (stat == StatDefOf.MoveSpeed) __result += t * 0.03f; 
+                                if (stat == StatDefOf.MeleeDamageFactor) __result += t * 0.03f;
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+    }
+
+    [HarmonyPatch]
+    public static class Patch_Suppress { 
+        static bool Prepare() => AccessTools.Method(typeof(Need_Suppression), "NeedInterval") != null;
+        static MethodBase TargetMethod() => AccessTools.Method(typeof(Need_Suppression), "NeedInterval");
+        static bool Prefix(Need_Suppression __instance, Pawn ___pawn) { if (___pawn.health.hediffSet.HasHediff(Defs.H_Stockholm)) { __instance.CurLevel = __instance.MaxLevel; return false; } return true; } 
+    }
+
+    // SLAVE WORK UNLOCK - This is the key patch!
+    [HarmonyPatch]
+    public static class Patch_SlaveWork
+    {
+        static bool Prepare()
+        {
+            var method = AccessTools.Method(typeof(Pawn), "GetDisabledWorkTypes");
+            return method != null;
+        }
+        
+        static MethodBase TargetMethod() => AccessTools.Method(typeof(Pawn), "GetDisabledWorkTypes");
+        
+        static void Postfix(Pawn __instance, ref List<WorkTypeDef> __result)
+        {
+            if (!SRI_Mod.S.unlockSlaveWork || !__instance.IsSlaveOfColony) return;
+            
+            // Check if slave qualifies for work unlocks
+            bool isScholar = __instance.health.hediffSet.HasHediff(Defs.H_Scholar);
+            bool highTier = Defs.Tier(__instance) >= 2;
+            bool hasStockholm = __instance.health.hediffSet.HasHediff(Defs.H_Stockholm);
+            
+            if (!isScholar && !highTier && !hasStockholm) return;
+            
+            // Remove these work type restrictions
+            var toRemove = new List<WorkTypeDef>();
+            foreach (var w in __result)
+            {
+                // Scholars or Tier 2+ can research
+                if (w == WorkTypeDefOf.Research && (isScholar || highTier)) toRemove.Add(w);
+                // Stockholm or Tier 2+ can do art, handle, wardening
+                if (hasStockholm || highTier)
+                {
+                    if (w.defName == "Art" || w.defName == "Handling" || w.defName == "Warden") toRemove.Add(w);
+                }
+            }
+            __result = __result.Except(toRemove).ToList();
+        }
+    }
+
+    // Fix skill display for unlocked slaves
+    [HarmonyPatch]
+    public static class Patch_SkillShow
+    {
+        static bool Prepare()
+        {
+            var prop = typeof(SkillRecord).GetProperty("PermanentlyDisabledBecauseOfWorkTypes");
+            return prop != null;
+        }
+        
+        static MethodBase TargetMethod()
+        {
+            var prop = typeof(SkillRecord).GetProperty("PermanentlyDisabledBecauseOfWorkTypes");
+            return prop?.GetGetMethod();
+        }
+        
+        static void Postfix(SkillRecord __instance, ref bool __result)
+        {
+            if (!__result || !SRI_Mod.S.unlockSlaveWork || __instance.Pawn?.IsSlaveOfColony != true) return;
+            
+            bool isScholar = __instance.Pawn.health.hediffSet.HasHediff(Defs.H_Scholar);
+            bool highTier = Defs.Tier(__instance.Pawn) >= 2;
+            bool hasStockholm = __instance.Pawn.health.hediffSet.HasHediff(Defs.H_Stockholm);
+            
+            // Show intellectual for scholars/high tier
+            if (__instance.def == SkillDefOf.Intellectual && (isScholar || highTier)) __result = false;
+            // Show artistic/animals/social for stockholm/high tier
+            if ((hasStockholm || highTier) && (__instance.def == SkillDefOf.Artistic || __instance.def == SkillDefOf.Animals || __instance.def == SkillDefOf.Social)) __result = false;
+        }
+    }
+
+    // Visual overlay
+    [HarmonyPatch(typeof(PawnUIOverlay), "DrawPawnGUIOverlay")]
+    public static class Patch_Overlay
+    {
+        static void Postfix(PawnUIOverlay __instance)
+        {
+            if (!SRI_Mod.S.showOverlay) return;
+            var p = Traverse.Create(__instance).Field("pawn").GetValue<Pawn>();
+            if (p == null || !p.IsSlaveOfColony || !p.Spawned) return;
+            int t = Defs.Tier(p); if (t <= 0) return;
+            GenMapUI.DrawThingLabel(GenMapUI.LabelDrawPosFor(p, -0.6f), Defs.TierName(t)[0].ToString(), Defs.TierColor(t));
+        }
+    }
+
+    // Scenario
+    public class ScenPart_GodSetup : ScenPart
+    {
+        public override void PostGameStart()
+        {
+            try
+            {
+                var cols = Find.GameInitData.startingAndOptionalPawns.Take(5).ToList();
+                if (cols.Count == 0) return;
+
+                var god = cols[0];
+                god.gender = Gender.Male;
+                var asex = god.story?.traits?.GetTrait(TraitDefOf.Asexual); if (asex != null) god.story.traits.RemoveTrait(asex);
+                if (god.story.traits.allTraits.Count >= 3) god.story.traits.allTraits.RemoveAt(0);
+                god.story.traits.GainTrait(new Trait(Defs.Trait_God));
+                var beauty = TraitDef.Named("Beauty"); if (beauty != null && !god.story.traits.HasTrait(beauty)) god.story.traits.GainTrait(new Trait(beauty, 2));
+                foreach (var s in god.skills.skills) if (s.Level < 5) s.Level = 5;
+                god.skills.GetSkill(SkillDefOf.Social).Level = Mathf.Max(12, god.skills.GetSkill(SkillDefOf.Social).Level);
+                god.skills.GetSkill(SkillDefOf.Melee).Level = Mathf.Max(10, god.skills.GetSkill(SkillDefOf.Melee).Level);
+                god.skills.GetSkill(SkillDefOf.Intellectual).Level = Mathf.Max(10, god.skills.GetSkill(SkillDefOf.Intellectual).Level);
+                god.health.AddHediff(Defs.H_Divine);
+
+                for (int i = 1; i < cols.Count; i++)
+                {
+                    var s = cols[i];
+                    s.gender = Gender.Female;
+                    s.guest.SetGuestStatus(Faction.OfPlayer, GuestStatus.Slave);
+                    s.health.AddHediff(Defs.H_Stockholm);
+                    s.health.AddHediff(Defs.H_Devotion);
+                    var dev = s.health.hediffSet.GetFirstHediffOfDef(Defs.H_Devotion) as Hediff_Devotion;
+                    if (dev != null) dev.Severity = 0.2f;
+                    GC.I?.SetConcubine(s, god);
+                }
+                Messages.Message("The God has descended!", god, MessageTypeDefOf.PositiveEvent);
+            }
+            catch (Exception e) { Log.Error($"[SRI] {e}"); }
+        }
+    }
 }
