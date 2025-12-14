@@ -1520,18 +1520,18 @@ namespace SlaveRealismImproved
         }
     }
 
-    // PROTECTIVE RAGE - สั่งทาสที่มี Stockholm ให้ปกป้อง God
+    // PROTECTIVE RAGE - สั่งทาสที่มี Stockholm หรือ Shield ให้ปกป้อง God
     [HarmonyPatch(typeof(Pawn), "PostApplyDamage")]
     public static class Patch_ProtectiveRage
     {
         static void Postfix(Pawn __instance, DamageInfo dinfo, float totalDamageDealt)
         {
             // เรียกใช้ฟังก์ชันกลาง (ส่งตัว God และ คนตี ไปประมวลผล)
-            TriggerProtectiveRage(__instance, dinfo.Instigator as Pawn);
+            TriggerProtectiveRage(__instance, dinfo.Instigator as Pawn, null);
         }
 
-        // ฟังก์ชันกลาง (เรียกได้จากทั้งตอนโดนตี และตอนโล่กันได้)
-        public static void TriggerProtectiveRage(Pawn god, Pawn attacker)
+        // ฟังก์ชันกลาง - รับ shieldBlocker เพื่อระบุว่าใครเป็นคนรับดาเมจไปแล้ว
+        public static void TriggerProtectiveRage(Pawn god, Pawn attacker, Pawn shieldBlocker)
         {
             if (god == null || god.Dead || !Defs.IsGod(god)) return;
             if (attacker == null || attacker == god) return;
@@ -1543,9 +1543,9 @@ namespace SlaveRealismImproved
             var map = god.Map;
             if (map == null) return;
 
-            // ค้นหาทาส Stockholm
-            var loyalSlaves = map.mapPawns.SlavesOfColonySpawned.Where(s => 
-                s.health.hediffSet.HasHediff(Defs.H_Stockholm) && 
+            // ค้นหาทาสที่มี Stockholm หรือ Shield (รวมทั้งสองกลุ่ม)
+            var loyalSlaves = map.mapPawns.SlavesOfColonySpawned.Where(s =>
+                (s.health.hediffSet.HasHediff(Defs.H_Stockholm) || s.health.hediffSet.HasHediff(Defs.H_Shield)) &&
                 !s.Downed && !s.Dead && s.Awake() &&
                 !s.InMentalState
             ).ToList();
@@ -1555,8 +1555,8 @@ namespace SlaveRealismImproved
             bool msgSent = false;
             foreach (var slave in loyalSlaves)
             {
-                // 1. มอบบัฟ Rage
-                if (!slave.health.hediffSet.HasHediff(Defs.H_Rage))
+                // 1. มอบบัฟ Rage (เฉพาะคนที่มี Stockholm)
+                if (slave.health.hediffSet.HasHediff(Defs.H_Stockholm) && !slave.health.hediffSet.HasHediff(Defs.H_Rage))
                 {
                     slave.health.AddHediff(Defs.H_Rage);
                     if (!msgSent)
@@ -1568,15 +1568,20 @@ namespace SlaveRealismImproved
 
                 // 2. เช็คสถานะโล่
                 var shield = slave.health.hediffSet.GetFirstHediffOfDef(Defs.H_Shield) as Hediff_Shield;
-                bool hasActiveShield = shield != null && shield.ready; // ต้องมีโล่ และโล่ต้องพร้อม
+
+                // *** FIX: ตรวจสอบว่าทาสคนนี้เป็นคนที่เพิ่งรับดาเมจไปหรือไม่ ***
+                // ถ้าเป็น shieldBlocker = ต้องไปตีศัตรู (โล่แตกแล้ว)
+                // ถ้าไม่ใช่ และมีโล่พร้อมใช้ = ยืนเฝ้า
+                bool isTheBlocker = (shieldBlocker != null && slave == shieldBlocker);
+                bool hasActiveShield = (shield != null && shield.ready && !isTheBlocker);
 
                 // บังคับ Draft ทันที
-                if (!slave.Drafted) slave.drafter.Drafted = true;
+                if (!slave.Drafted && slave.drafter != null) slave.drafter.Drafted = true;
 
-                // 3. Logic สั่งงาน (ตามที่คุณต้องการ)
+                // 3. Logic สั่งงาน
                 if (hasActiveShield)
                 {
-                    // === กรณีมีโล่: เป็น Bodyguard ===
+                    // === กรณีมีโล่พร้อมใช้: เป็น Bodyguard ===
                     // ถ้าอยู่ไกลเกิน 3 ช่อง -> วิ่งกลับมาหา God
                     if (!slave.Position.InHorDistOf(god.Position, 3f))
                     {
@@ -1587,9 +1592,9 @@ namespace SlaveRealismImproved
                         slave.jobs.TryTakeOrderedJob(guardJob, JobTag.DraftedOrder);
                     }
                     // ถ้าอยู่ใกล้แล้ว -> ยืนเฝ้าระวังภัย (Wait_Combat)
-                    else 
+                    else
                     {
-                        // ถ้ากำลังจะวิ่งไปตีศัตรู หรือเดินไปไหน -> สั่งหยุดแล้วยืนเฝ้าแทน
+                        // สั่งให้ยืนเฝ้า (ไม่ไปตีใคร)
                         if (slave.CurJobDef != JobDefOf.Wait_Combat)
                         {
                             slave.jobs.StopAll();
@@ -1600,11 +1605,26 @@ namespace SlaveRealismImproved
                         }
                     }
                 }
-                else
+                else if (isTheBlocker || (shield != null && !shield.ready))
                 {
-                    // === กรณีโล่แตก/ไม่มีโล่: เป็น Berserker ===
+                    // === กรณีเป็นคนที่โล่แตก: เป็น Berserker ===
                     // วิ่งไปกระทืบศัตรู
-                    if (slave.CurJobDef != JobDefOf.AttackMelee || slave.CurJob.targetA.Thing != attacker)
+                    if (slave.CurJobDef != JobDefOf.AttackMelee || (slave.CurJob != null && slave.CurJob.targetA.Thing != attacker))
+                    {
+                        slave.jobs.StopAll();
+                        Job attackJob = JobMaker.MakeJob(JobDefOf.AttackMelee, attacker);
+                        attackJob.maxNumMeleeAttacks = 100;
+                        attackJob.expiryInterval = 2500;
+                        attackJob.checkOverrideOnExpire = true;
+                        attackJob.collideWithPawns = true;
+                        attackJob.playerForced = true;
+                        slave.jobs.TryTakeOrderedJob(attackJob, JobTag.DraftedOrder);
+                    }
+                }
+                else if (slave.health.hediffSet.HasHediff(Defs.H_Stockholm) && shield == null)
+                {
+                    // === กรณีมี Stockholm แต่ไม่มีโล่: Berserker เหมือนเดิม ===
+                    if (slave.CurJobDef != JobDefOf.AttackMelee || (slave.CurJob != null && slave.CurJob.targetA.Thing != attacker))
                     {
                         slave.jobs.StopAll();
                         Job attackJob = JobMaker.MakeJob(JobDefOf.AttackMelee, attacker);
@@ -1745,7 +1765,8 @@ namespace SlaveRealismImproved
                 }
 
                 // 4. *** สำคัญ *** สั่งทาสทุกคนให้ขยับตัวตามแผน (คนโล่แตกวิ่งลุย, คนโล่เหลือยืนกัน)
-                Patch_ProtectiveRage.TriggerProtectiveRage(p, dinfo.Instigator as Pawn);
+                // ส่ง shielder ไปด้วยเพื่อบอกว่าใครเป็นคนที่โล่แตก
+                Patch_ProtectiveRage.TriggerProtectiveRage(p, dinfo.Instigator as Pawn, shielder);
 
                 // 5. แก้ Error NRE: สร้างผลลัพธ์เปล่าๆ คืนให้เกม
                 __result = new DamageWorker.DamageResult();
