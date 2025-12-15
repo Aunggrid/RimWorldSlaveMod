@@ -1524,17 +1524,32 @@ namespace SlaveRealismImproved
     [HarmonyPatch(typeof(Pawn), "PostApplyDamage")]
     public static class Patch_ProtectiveRage
     {
+        // ป้องกัน double trigger - เก็บ tick ที่เรียกล่าสุด
+        private static int lastTriggerTick = -1;
+        private static Pawn lastShieldBrokenSlave = null; // ทาสที่โล่เพิ่งแตก
+        
         static void Postfix(Pawn __instance, DamageInfo dinfo, float totalDamageDealt)
         {
-            // เรียกใช้ฟังก์ชันกลาง (ส่งตัว God และ คนตี ไปประมวลผล)
-            TriggerProtectiveRage(__instance, dinfo.Instigator as Pawn);
+            // เรียก TriggerProtectiveRage เฉพาะเมื่อ God โดนตีจริงๆ (ไม่มีโล่กัน)
+            // ถ้าโล่กันแล้ว จะถูกเรียกจาก Patch_DivineShield แทน
+            TriggerProtectiveRage(__instance, dinfo.Instigator as Pawn, null);
         }
 
-        // ฟังก์ชันกลาง (เรียกได้จากทั้งตอนโดนตี และตอนโล่กันได้)
-        public static void TriggerProtectiveRage(Pawn god, Pawn attacker)
+        // ฟังก์ชันกลาง - เพิ่ม parameter สำหรับระบุว่าใครเป็นคนที่โล่เพิ่งแตก
+        public static void TriggerProtectiveRage(Pawn god, Pawn attacker, Pawn shieldBrokenSlave)
         {
             if (god == null || god.Dead || !Defs.IsGod(god)) return;
             if (attacker == null || attacker == god) return;
+
+            // ป้องกัน double trigger ใน tick เดียวกัน
+            int currentTick = Find.TickManager.TicksGame;
+            if (currentTick == lastTriggerTick && shieldBrokenSlave == null)
+            {
+                // ถ้า tick เดียวกันและไม่ได้มาจากโล่แตก = double trigger จาก PostApplyDamage
+                return;
+            }
+            lastTriggerTick = currentTick;
+            lastShieldBrokenSlave = shieldBrokenSlave;
 
             // เช็คว่าเป็นศัตรู หรือคนบ้าคลั่ง
             bool isEnemy = attacker.HostileTo(god) || attacker.InAggroMentalState;
@@ -1566,14 +1581,17 @@ namespace SlaveRealismImproved
                     }
                 }
 
-                // 2. เช็คสถานะโล่
-                var shield = slave.health.hediffSet.GetFirstHediffOfDef(Defs.H_Shield) as Hediff_Shield;
-                bool hasActiveShield = shield != null && shield.ready; // ต้องมีโล่ และโล่ต้องพร้อม
-
                 // บังคับ Draft ทันที
                 if (!slave.Drafted) slave.drafter.Drafted = true;
 
-                // 3. Logic สั่งงาน (ตามที่คุณต้องการ)
+                // 2. เช็คสถานะโล่ - ถ้าเป็นคนที่โล่เพิ่งแตก ให้ไปตี (แม้ว่า ready อาจยังไม่ update)
+                bool isTheShieldBrokenSlave = (shieldBrokenSlave != null && slave == shieldBrokenSlave);
+                
+                var shield = slave.health.hediffSet.GetFirstHediffOfDef(Defs.H_Shield) as Hediff_Shield;
+                // hasActiveShield = true ถ้า: มีโล่ + โล่พร้อม + ไม่ใช่คนที่โล่เพิ่งแตก
+                bool hasActiveShield = (shield != null && shield.ready) && !isTheShieldBrokenSlave;
+
+                // 3. Logic สั่งงาน
                 if (hasActiveShield)
                 {
                     // === กรณีมีโล่: เป็น Bodyguard ===
@@ -1589,13 +1607,13 @@ namespace SlaveRealismImproved
                     // ถ้าอยู่ใกล้แล้ว -> ยืนเฝ้าระวังภัย (Wait_Combat)
                     else 
                     {
-                        // ถ้ากำลังจะวิ่งไปตีศัตรู หรือเดินไปไหน -> สั่งหยุดแล้วยืนเฝ้าแทน
+                        // ถ้ากำลังจะวิ่งไปตีศัตรู -> สั่งหยุดแล้วยืนเฝ้าแทน
                         if (slave.CurJobDef != JobDefOf.Wait_Combat)
                         {
                             slave.jobs.StopAll();
                             Job waitJob = JobMaker.MakeJob(JobDefOf.Wait_Combat, god.Position);
                             waitJob.playerForced = true;
-                            waitJob.expiryInterval = 2000; // ยืนเฝ้ายาวๆ (ประมาณ 1 ชม.) จนกว่าจะมีคำสั่งใหม่
+                            waitJob.expiryInterval = 2000;
                             slave.jobs.TryTakeOrderedJob(waitJob, JobTag.DraftedOrder);
                         }
                     }
@@ -1604,7 +1622,7 @@ namespace SlaveRealismImproved
                 {
                     // === กรณีโล่แตก/ไม่มีโล่: เป็น Berserker ===
                     // วิ่งไปกระทืบศัตรู
-                    if (slave.CurJobDef != JobDefOf.AttackMelee || slave.CurJob.targetA.Thing != attacker)
+                    if (slave.CurJobDef != JobDefOf.AttackMelee || slave.CurJob?.targetA.Thing != attacker)
                     {
                         slave.jobs.StopAll();
                         Job attackJob = JobMaker.MakeJob(JobDefOf.AttackMelee, attacker);
@@ -1714,14 +1732,16 @@ namespace SlaveRealismImproved
             var map = p.Map;
             if (map == null) return true;
 
-            // ค้นหาทาสที่มีโล่พร้อมใช้งาน
-            var shielder = map.mapPawns.SlavesOfColonySpawned.FirstOrDefault(s => 
-                !s.Dead && !s.Downed && s.Awake() &&
-                Defs.Tier(s) >= 3 && 
-                s.Position.InHorDistOf(p.Position, 15f) &&
-                s.health.hediffSet.GetFirstHediffOfDef(Defs.H_Shield) is Hediff_Shield h && 
-                h.ready
-            );
+            // ค้นหาทาสที่มีโล่พร้อมใช้งาน - เรียงตามระยะห่าง (ใกล้สุดก่อน)
+            var shielder = map.mapPawns.SlavesOfColonySpawned
+                .Where(s => 
+                    !s.Dead && !s.Downed && s.Awake() &&
+                    Defs.Tier(s) >= 3 && 
+                    s.Position.InHorDistOf(p.Position, 15f) &&
+                    s.health.hediffSet.GetFirstHediffOfDef(Defs.H_Shield) is Hediff_Shield h && 
+                    h.ready)
+                .OrderBy(s => s.Position.DistanceTo(p.Position)) // เรียงตามระยะห่าง - ใกล้สุดก่อน
+                .FirstOrDefault();
 
             if (shielder != null)
             {
@@ -1732,7 +1752,7 @@ namespace SlaveRealismImproved
                 
                 // 2. แสดง Effect
                 MoteMaker.ThrowText(p.DrawPos, p.Map, "Shield Blocked!!", Color.white); 
-                MoteMaker.ThrowText(shielder.DrawPos, shielder.Map, "ABSORBED!", Color.cyan);
+                MoteMaker.ThrowText(shielder.DrawPos, shielder.Map, $"{shielder.LabelShort} ABSORBED!", Color.cyan);
                 FleckMaker.Static(p.Position, p.Map, FleckDefOf.PsycastAreaEffect, 2);
                 SoundDef.Named("EnergyShield_Broken").PlayOneShot(new TargetInfo(p.Position, p.Map));
 
@@ -1744,8 +1764,9 @@ namespace SlaveRealismImproved
                     shielder.TakeDamage(newDmg);
                 }
 
-                // 4. *** สำคัญ *** สั่งทาสทุกคนให้ขยับตัวตามแผน (คนโล่แตกวิ่งลุย, คนโล่เหลือยืนกัน)
-                Patch_ProtectiveRage.TriggerProtectiveRage(p, dinfo.Instigator as Pawn);
+                // 4. *** สำคัญ *** สั่งทาสทุกคนให้ขยับตัวตามแผน
+                // ส่ง shielder ไปด้วยเพื่อบอกว่าใครเป็นคนที่โล่เพิ่งแตก
+                Patch_ProtectiveRage.TriggerProtectiveRage(p, dinfo.Instigator as Pawn, shielder);
 
                 // 5. แก้ Error NRE: สร้างผลลัพธ์เปล่าๆ คืนให้เกม
                 __result = new DamageWorker.DamageResult();

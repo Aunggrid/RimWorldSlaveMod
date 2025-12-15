@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("SlaveRealism")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+e00015f368161be5a85a27f658c6b07ae4d2f9a2")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+370c7b92024cd3d66166a7ea5c67676ba18061f6")]
 [assembly: System.Reflection.AssemblyProductAttribute("SlaveRealism")]
 [assembly: System.Reflection.AssemblyTitleAttribute("SlaveRealism")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
