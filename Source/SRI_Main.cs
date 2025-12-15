@@ -391,52 +391,94 @@ namespace SlaveRealismImproved
         public override bool ShouldRemove => markedForRemoval;
         public override string LabelInBrackets => $"{(int)Severity} slaves";
         
-        // อัปเดต Tooltip ให้บอกความสามารถใหม่
-        public override string TipStringExtra => $"+{(int)Severity * 5}% move, +{(int)Severity * 10}% melee/research\n+{(int)Severity * 2}% dodge/hit, Deflect: {Mathf.Min(20 + (int)Severity * 5, 80)}%\n\nPassive: Slowly cures diseases/conditions.\nHealing Ritual: Accelerates cure rate (5x).";
+        // Updated Tooltip
+        public override string TipStringExtra => $"+{(int)Severity * 5}% move, +{(int)Severity * 10}% melee/research\n+{(int)Severity * 2}% dodge/hit, Deflect: {Mathf.Min(20 + (int)Severity * 5, 80)}%\n\nPassive: Slowly cures diseases & chronic conditions.\nHealing Ritual: Accelerates cure rate (5x).";
         
         public override void Tick() 
         { 
             base.Tick(); 
             
-            // 1. Logic เดิม: อัปเดตจำนวนทาส (Slave Count) ทุก 3 วินาที (199 ticks)
+            // 1. Update slave count every 3 seconds (199 ticks)
             if (pawn.IsHashIntervalTick(199)) 
             { 
                 if (GC.I == null || !GC.I.IsGodCached(pawn)) { markedForRemoval = true; return; } 
                 Severity = GC.I?.CachedSlaveCount ?? 0; 
             } 
             
-            // 2. Logic ใหม่: ระบบรักษาตัวเอง (Healing) ทำงานทุก 1 ชั่วโมงในเกม (2500 ticks)
+            // 2. Divine Healing - heals diseases AND chronic conditions every hour (2500 ticks)
             if (pawn.IsHashIntervalTick(2500))
             {
-                // ค่าพื้นฐาน: รักษา 0.005 ต่อชั่วโมง (ประมาณ 0.12 ต่อวัน - ช้าๆ สำหรับโรคเรื้อรัง)
-                float healAmount = 0.005f; 
-
-                // เช็คว่ามีบัฟ Healing Ritual หรือไม่?
-                if (pawn.health.hediffSet.HasHediff(Defs.H_Healing))
+                // Base healing rates
+                float diseaseHealRate = 0.008f;      // Normal diseases: ~0.19/day (heals flu in ~5 days)
+                float chronicHealRate = 0.002f;      // Chronic conditions: ~0.048/day (heals in ~20 days)
+                
+                // Healing Ritual buff = 5x faster!
+                bool hasRitualBuff = pawn.health.hediffSet.HasHediff(Defs.H_Healing);
+                if (hasRitualBuff)
                 {
-                    // ถ้ามีบัฟ เร่งความเร็ว 5 เท่า! (0.025 ต่อชั่วโมง / 0.6 ต่อวัน - หายเร็วมาก)
-                    healAmount *= 5f; 
+                    diseaseHealRate *= 5f;   // ~0.95/day - cures most diseases in 1 day!
+                    chronicHealRate *= 5f;   // ~0.24/day - chronic conditions in ~4 days
                 }
 
-                // ค้นหา Hediff ที่ "แย่" ทั้งหมด (ไม่นับแผลสด, แผลเป็นถาวร, หรืออวัยวะขาด)
-                // ครอบคลุม: Artery Blockage, Asthma, Flu, Plague, Food Poisoning, Toxic Buildup ฯลฯ
+                // Find ALL bad hediffs (diseases + chronic conditions)
                 var badHediffs = pawn.health.hediffSet.hediffs.Where(h => 
                     h.def.isBad && 
                     h.Severity > 0 &&
-                    !h.IsPermanent() &&               // ไม่รักษาแผลเป็น (Scars)
-                    !(h is Hediff_Injury) &&          // ไม่รักษาแผลสด (ปล่อยให้หมอรักษา หรือ Immunity ทำงาน)
-                    !(h is Hediff_MissingPart) &&     // ไม่สามารถงอกแขนขาใหม่ได้
-                    h.def != Defs.H_ResSick &&        // ไม่ลบดีบัฟของ Mod เราเอง (Resurrection Sickness)
-                    h.def != Defs.H_Exhaust &&        // ไม่ลบดีบัฟ Ritual Exhaustion
-                    h.def != HediffDefOf.Anesthetic   // ไม่ทำให้ตื่นจากยาสลบทันที (ป้องกันบั๊กผ่าตัด)
+                    !(h is Hediff_MissingPart) &&     // Can't regrow limbs
+                    !(h is Hediff_AddedPart) &&       // Don't remove prosthetics
+                    !(h is Hediff_Implant) &&         // Don't remove implants
+                    h.def != Defs.H_ResSick &&        // Keep our own debuffs
+                    h.def != Defs.H_Exhaust &&        
+                    h.def != HediffDefOf.Anesthetic   // Don't wake during surgery
                 ).ToList();
 
                 foreach (var h in badHediffs)
                 {
-                    // ลดความรุนแรงของโรคลง
-                    h.Severity = Mathf.Max(0, h.Severity - healAmount);
+                    // Skip fresh injuries - let doctors handle those
+                    if (h is Hediff_Injury injury && !injury.IsPermanent()) continue;
+                    
+                    // Determine healing rate based on condition type
+                    bool isChronic = h.IsPermanent() || IsChronicCondition(h.def);
+                    float healRate = isChronic ? chronicHealRate : diseaseHealRate;
+                    
+                    // Apply healing
+                    h.Severity = Mathf.Max(0, h.Severity - healRate);
+                    
+                    // Visual feedback when healing chronic conditions (rare, so show it)
+                    if (isChronic && hasRitualBuff && pawn.IsHashIntervalTick(5000) && Rand.Chance(0.3f))
+                    {
+                        MoteMaker.ThrowText(pawn.DrawPos, pawn.Map, $"♥ {h.def.label} healing", Color.green);
+                    }
                 }
             }
+        }
+        
+        // Helper: Check if hediff is a chronic condition (even if not marked permanent)
+        private bool IsChronicCondition(HediffDef def)
+        {
+            if (def == null) return false;
+            
+            // Known chronic conditions by defName
+            string[] chronicDefNames = {
+                "Asthma", "BadBack", "Frail", "Cataract", "Dementia", "Alzheimers",
+                "HeartArteryBlockage", "Carcinoma", "ChemicalDamageModerate", "ChemicalDamageSevere",
+                "Cirrhosis", "TraumaSavant", "Blindness", "HearingLoss", "Tinnitus",
+                "ResurrectionPsychosis", "ResurrectionSickness", "BloodRot", "Abasia",
+                "MuscleParasites", "FibrousMechanites", "SensoryMechanites", "GutWorms", "Scaria"
+            };
+            
+            foreach (var name in chronicDefNames)
+            {
+                if (def.defName.Contains(name)) return true;
+            }
+            
+            // Also check if it's marked as chronic or has very slow natural healing
+            if (def.chronic) return true;
+            if (def.CompProps<HediffCompProperties_TendDuration>() == null && 
+                def.CompProps<HediffCompProperties_Immunizable>() == null &&
+                !def.tendable && !def.makesSickThought) return true;
+                
+            return false;
         }
     }
 
@@ -1594,34 +1636,49 @@ namespace SlaveRealismImproved
                 // 3. Logic สั่งงาน
                 if (hasActiveShield)
                 {
-                    // === กรณีมีโล่: เป็น Bodyguard ===
-                    // ถ้าอยู่ไกลเกิน 3 ช่อง -> วิ่งกลับมาหา God
-                    if (!slave.Position.InHorDistOf(god.Position, 3f))
+                    // === BODYGUARD MODE: Stay near God but AWAY from enemies ===
+                    // Find safe position: within shield range, far from attacker
+                    IntVec3 safeSpot = FindSafeGuardPosition(slave, god, attacker, map);
+                    
+                    if (safeSpot.IsValid)
                     {
-                        slave.jobs.StopAll();
-                        Job guardJob = JobMaker.MakeJob(JobDefOf.Goto, god);
-                        guardJob.playerForced = true;
-                        guardJob.collideWithPawns = true;
-                        slave.jobs.TryTakeOrderedJob(guardJob, JobTag.DraftedOrder);
-                    }
-                    // ถ้าอยู่ใกล้แล้ว -> ยืนเฝ้าระวังภัย (Wait_Combat)
-                    else 
-                    {
-                        // ถ้ากำลังจะวิ่งไปตีศัตรู -> สั่งหยุดแล้วยืนเฝ้าแทน
-                        if (slave.CurJobDef != JobDefOf.Wait_Combat)
+                        // Move to safe position if not already there
+                        if (!slave.Position.InHorDistOf(safeSpot, 3f))
                         {
                             slave.jobs.StopAll();
-                            Job waitJob = JobMaker.MakeJob(JobDefOf.Wait_Combat, god.Position);
-                            waitJob.playerForced = true;
-                            waitJob.expiryInterval = 2000;
-                            slave.jobs.TryTakeOrderedJob(waitJob, JobTag.DraftedOrder);
+                            Job guardJob = JobMaker.MakeJob(JobDefOf.Goto, safeSpot);
+                            guardJob.playerForced = true;
+                            guardJob.locomotionUrgency = LocomotionUrgency.Sprint;
+                            slave.jobs.TryTakeOrderedJob(guardJob, JobTag.DraftedOrder);
+                        }
+                        else
+                        {
+                            // Already at safe spot - wait in combat stance
+                            if (slave.CurJobDef != JobDefOf.Wait_Combat)
+                            {
+                                slave.jobs.StopAll();
+                                Job waitJob = JobMaker.MakeJob(JobDefOf.Wait_Combat);
+                                waitJob.playerForced = true;
+                                waitJob.expiryInterval = 3000;
+                                slave.jobs.TryTakeOrderedJob(waitJob, JobTag.DraftedOrder);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Fallback: just stay within 10 tiles of God
+                        if (!slave.Position.InHorDistOf(god.Position, 10f))
+                        {
+                            slave.jobs.StopAll();
+                            Job guardJob = JobMaker.MakeJob(JobDefOf.Goto, god);
+                            guardJob.playerForced = true;
+                            slave.jobs.TryTakeOrderedJob(guardJob, JobTag.DraftedOrder);
                         }
                     }
                 }
                 else
                 {
-                    // === กรณีโล่แตก/ไม่มีโล่: เป็น Berserker ===
-                    // วิ่งไปกระทืบศัตรู
+                    // === BERSERKER MODE: Attack the enemy! ===
                     if (slave.CurJobDef != JobDefOf.AttackMelee || slave.CurJob?.targetA.Thing != attacker)
                     {
                         slave.jobs.StopAll();
@@ -1635,6 +1692,80 @@ namespace SlaveRealismImproved
                     }
                 }
             }
+        }
+        
+        // Helper: Find a safe position for bodyguard - away from enemies but within shield range
+        private static IntVec3 FindSafeGuardPosition(Pawn slave, Pawn god, Pawn attacker, Map map)
+        {
+            const float MIN_DIST_FROM_GOD = 5f;    // Don't crowd God
+            const float MAX_DIST_FROM_GOD = 12f;   // Stay within effective shield range
+            const float IDEAL_DIST_FROM_GOD = 8f;  // Sweet spot
+            
+            IntVec3 bestSpot = IntVec3.Invalid;
+            float bestScore = float.MinValue;
+            
+            // Direction from attacker to God (we want to position on opposite side)
+            Vector3 threatDir = (attacker.Position - god.Position).ToVector3().normalized;
+            
+            // Try multiple candidates
+            for (int i = 0; i < 50; i++)
+            {
+                // Sample positions in a ring around God
+                IntVec3 candidate;
+                if (i < 30)
+                {
+                    // First 30 tries: systematic radial pattern
+                    candidate = god.Position + GenRadial.RadialPattern[Rand.Range(20, 100)];
+                }
+                else
+                {
+                    // Last 20 tries: random in safe direction (opposite to attacker)
+                    Vector3 safeDir = -threatDir;
+                    float angle = Rand.Range(-60f, 60f) * Mathf.Deg2Rad;
+                    Vector3 rotatedDir = new Vector3(
+                        safeDir.x * Mathf.Cos(angle) - safeDir.z * Mathf.Sin(angle),
+                        0,
+                        safeDir.x * Mathf.Sin(angle) + safeDir.z * Mathf.Cos(angle)
+                    );
+                    candidate = god.Position + (rotatedDir * Rand.Range(MIN_DIST_FROM_GOD, MAX_DIST_FROM_GOD)).ToIntVec3();
+                }
+                
+                // Validate position
+                if (!candidate.InBounds(map)) continue;
+                if (!candidate.Standable(map)) continue;
+                
+                float distFromGod = candidate.DistanceTo(god.Position);
+                if (distFromGod < MIN_DIST_FROM_GOD || distFromGod > MAX_DIST_FROM_GOD) continue;
+                
+                // Check if reachable
+                if (!slave.CanReach(candidate, PathEndMode.OnCell, Danger.Some)) continue;
+                
+                // Calculate score
+                float distFromAttacker = candidate.DistanceTo(attacker.Position);
+                float distFromIdeal = Mathf.Abs(distFromGod - IDEAL_DIST_FROM_GOD);
+                
+                // Score: maximize distance from attacker, minimize deviation from ideal distance to God
+                float score = distFromAttacker * 3f - distFromIdeal * 2f;
+                
+                // Bonus for being on opposite side of God from attacker
+                Vector3 posDir = (candidate - god.Position).ToVector3().normalized;
+                float dotProduct = Vector3.Dot(posDir, threatDir);
+                if (dotProduct < 0) score += 20f; // On safe side
+                
+                // Bonus for cover
+                if (candidate.GetCover(map) != null) score += 10f;
+                
+                // Penalty for being in line of fire
+                if (GenSight.LineOfSight(candidate, attacker.Position, map)) score -= 5f;
+                
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestSpot = candidate;
+                }
+            }
+            
+            return bestSpot;
         }
     }
 
@@ -1792,6 +1923,9 @@ namespace SlaveRealismImproved
         static MethodBase TargetMethod()
         {
             var prop = typeof(SkillRecord).GetProperty("PermanentlyDisabledBecauseOfWorkTypes");
+            
+
+
             return prop?.GetGetMethod();
         }
         
