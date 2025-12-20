@@ -5,6 +5,8 @@
     <LangVersion>latest</LangVersion>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <OutputPath>..\Assemblies</OutputPath>
+    <AssemblyName>SlaveRealism</AssemblyName>
+    <RootNamespace>SlaveRealismImproved</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
@@ -32,6 +34,11 @@
       <HintPath>D:\SteamLibrary\steamapps\workshop\content\294100\2009463077\1.5\Assemblies\0Harmony.dll</HintPath>
       <Private>False</Private>
     </Reference>
+  </ItemGroup>
+
+  <!-- Exclude old SRI_Main.cs if it still exists -->
+  <ItemGroup>
+    <Compile Remove="SRI_Main.cs" />
   </ItemGroup>
 
 </Project>

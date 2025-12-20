@@ -3,7 +3,7 @@
   <MainButtonDef>
     <defName>SRI_HaremTab</defName>
     <label>Harem</label>
-    <description>Manage your slaves and concubines.</description>
+    <description>Manage your slaves, Faith, and divine edicts.</description>
     <tabWindowClass>SlaveRealismImproved.HaremTab</tabWindowClass>
     <order>850</order>
     <validWithoutMap>false</validWithoutMap>

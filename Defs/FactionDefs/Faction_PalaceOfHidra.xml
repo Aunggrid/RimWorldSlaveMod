@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+  
+  <!-- Palace of Hidra Faction -->
+  <FactionDef>
+    <defName>SRI_PalaceOfHidra</defName>
+    <label>Palace of Hidra</label>
+    <description>A technologically advanced faction led by the self-proclaimed "High God King" - a mere human who uses cutting-edge technology to simulate divine power. They despise true gods and religious cults, viewing them as threats to their technological utopia.\n\nThe Palace sends Hunter squads to eliminate false prophets and "liberate" enslaved followers.</description>
+    <pawnSingular>Hidran</pawnSingular>
+    <pawnsPlural>Hidrans</pawnsPlural>
+    <listOrderPriority>30</listOrderPriority>
+    <settlementGenerationWeight>1</settlementGenerationWeight>
+    <requiredCountAtGameStart>1</requiredCountAtGameStart>
+    <maxCountAtGameStart>1</maxCountAtGameStart>
+    <canMakeRandomly>true</canMakeRandomly>
+    <canSiege>true</canSiege>
+    <canStageAttacks>true</canStageAttacks>
+    <leaderTitle>High God King</leaderTitle>
+    <factionIconPath>World/WorldObjects/Expanding/SiteOutpostPirates</factionIconPath>
+    <colorSpectrum>
+      <li>(0.6, 0.6, 0.8)</li>
+      <li>(0.3, 0.3, 0.5)</li>
+    </colorSpectrum>
+    <factionNameMaker>NamerFactionOutlander</factionNameMaker>
+    <settlementNameMaker>NamerSettlementOutlander</settlementNameMaker>
+    <techLevel>Ultra</techLevel>
+    <backstoryFilters>
+      <li>
+        <categories>
+          <li>Outlander</li>
+          <li>Civil</li>
+          <li>Imperial</li>
+        </categories>
+      </li>
+    </backstoryFilters>
+    <allowedCultures>
+      <li>Rustican</li>
+      <li>Corunan</li>
+      <li>Astropolitan</li>
+    </allowedCultures>
+    <apparelStuffFilter>
+      <thingDefs>
+        <li>Plasteel</li>
+        <li>Synthread</li>
+        <li>Hyperweave</li>
+      </thingDefs>
+    </apparelStuffFilter>
+    <maxPawnCostPerTotalPointsCurve>
+      <points>
+        <li>(0, 35)</li>
+        <li>(70, 50)</li>
+        <li>(100, 100)</li>
+        <li>(200, 150)</li>
+        <li>(500, 200)</li>
+        <li>(1000, 300)</li>
+        <li>(2000, 500)</li>
+        <li>(5000, 1000)</li>
+      </points>
+    </maxPawnCostPerTotalPointsCurve>
+    <pawnGroupMakers>
+      <li>
+        <kindDef>Combat</kindDef>
+        <commonality>100</commonality>
+        <options>
+          <SRI_Hunter>100</SRI_Hunter>
+          <SRI_Inquisitor>50</SRI_Inquisitor>
+          <SRI_Champion>20</SRI_Champion>
+        </options>
+      </li>
+      <li>
+        <kindDef>Settlement</kindDef>
+        <commonality>100</commonality>
+        <options>
+          <SRI_Hunter>80</SRI_Hunter>
+          <SRI_Inquisitor>40</SRI_Inquisitor>
+          <Colonist>30</Colonist>
+        </options>
+      </li>
+      <li>
+        <kindDef>Trader</kindDef>
+        <commonality>100</commonality>
+        <traders>
+          <Colonist>1</Colonist>
+        </traders>
+        <carriers>
+          <Muffalo>6</Muffalo>
+          <Dromedary>5</Dromedary>
+          <Alpaca>2</Alpaca>
+          <Elephant>1</Elephant>
+        </carriers>
+        <guards>
+          <SRI_Hunter>40</SRI_Hunter>
+          <SRI_Inquisitor>20</SRI_Inquisitor>
+        </guards>
+      </li>
+    </pawnGroupMakers>
+    <hostileToFactionlessHumanlikes>false</hostileToFactionlessHumanlikes>
+    <permanentEnemy>true</permanentEnemy>
+    <permanentEnemyToEveryoneExceptPlayer>false</permanentEnemyToEveryoneExceptPlayer>
+    <raidLootValueFromPointsCurve>
+      <points>
+        <li>(35, 15)</li>
+        <li>(100, 120)</li>
+        <li>(1000, 500)</li>
+        <li>(2000, 800)</li>
+        <li>(4000, 1000)</li>
+      </points>
+    </raidLootValueFromPointsCurve>
+  </FactionDef>
+
+  <!-- Hunter PawnKind -->
+  <PawnKindDef>
+    <defName>SRI_Hunter</defName>
+    <label>Hidran Hunter</label>
+    <race>Human</race>
+    <defaultFactionType>SRI_PalaceOfHidra</defaultFactionType>
+    <combatPower>100</combatPower>
+    <isFighter>true</isFighter>
+    <aiAvoidCover>false</aiAvoidCover>
+    <gearHealthRange>0.7~2.3</gearHealthRange>
+    <apparelMoney>1500~3000</apparelMoney>
+    <weaponMoney>500~2000</weaponMoney>
+    <apparelTags>
+      <li>IndustrialMilitary</li>
+      <li>SpacerMilitary</li>
+    </apparelTags>
+    <weaponTags>
+      <li>Gun</li>
+      <li>SpacerGun</li>
+    </weaponTags>
+    <techHediffsMoney>500~1500</techHediffsMoney>
+    <techHediffsTags>
+      <li>Advanced</li>
+      <li>ImplantEmpireCommon</li>
+    </techHediffsTags>
+    <biocodeWeaponChance>0.3</biocodeWeaponChance>
+    <initialWillRange>3~5</initialWillRange>
+    <initialResistanceRange>15~25</initialResistanceRange>
+  </PawnKindDef>
+
+  <!-- Inquisitor PawnKind (anti-psycast) -->
+  <PawnKindDef>
+    <defName>SRI_Inquisitor</defName>
+    <label>Hidran Inquisitor</label>
+    <race>Human</race>
+    <defaultFactionType>SRI_PalaceOfHidra</defaultFactionType>
+    <combatPower>150</combatPower>
+    <isFighter>true</isFighter>
+    <aiAvoidCover>false</aiAvoidCover>
+    <gearHealthRange>0.8~2.5</gearHealthRange>
+    <apparelMoney>2000~4000</apparelMoney>
+    <weaponMoney>1000~3000</weaponMoney>
+    <apparelTags>
+      <li>SpacerMilitary</li>
+    </apparelTags>
+    <weaponTags>
+      <li>SpacerGun</li>
+      <li>MedievalMeleeAdvanced</li>
+    </weaponTags>
+    <techHediffsMoney>1000~3000</techHediffsMoney>
+    <techHediffsTags>
+      <li>Advanced</li>
+      <li>AdvancedWeapon</li>
+    </techHediffsTags>
+    <biocodeWeaponChance>0.5</biocodeWeaponChance>
+    <initialWillRange>5~8</initialWillRange>
+    <initialResistanceRange>20~35</initialResistanceRange>
+  </PawnKindDef>
+
+  <!-- Champion PawnKind (Boss) -->
+  <PawnKindDef>
+    <defName>SRI_Champion</defName>
+    <label>Hidran Champion</label>
+    <race>Human</race>
+    <defaultFactionType>SRI_PalaceOfHidra</defaultFactionType>
+    <combatPower>300</combatPower>
+    <isFighter>true</isFighter>
+    <aiAvoidCover>false</aiAvoidCover>
+    <gearHealthRange>1.0~3.0</gearHealthRange>
+    <apparelMoney>4000~8000</apparelMoney>
+    <weaponMoney>2000~5000</weaponMoney>
+    <apparelTags>
+      <li>SpacerMilitary</li>
+    </apparelTags>
+    <apparelRequired>
+      <li>Apparel_PowerArmor</li>
+      <li>Apparel_PowerArmorHelmet</li>
+    </apparelRequired>
+    <weaponTags>
+      <li>SpacerGun</li>
+      <li>GunHeavy</li>
+    </weaponTags>
+    <techHediffsMoney>2000~5000</techHediffsMoney>
+    <techHediffsTags>
+      <li>Advanced</li>
+      <li>AdvancedWeapon</li>
+      <li>ImplantEmpireRoyal</li>
+    </techHediffsTags>
+    <techHediffsRequired>
+      <li>PowerClaw</li>
+    </techHediffsRequired>
+    <biocodeWeaponChance>0.8</biocodeWeaponChance>
+    <initialWillRange>8~12</initialWillRange>
+    <initialResistanceRange>30~50</initialResistanceRange>
+  </PawnKindDef>
+
+</Defs>

@@ -7,7 +7,44 @@
     <li>1.4</li>
     <li>1.5</li>
   </supportedVersions>
-  <description>Divine harem mod with Devotion system, Divine Abilities, Divine Shield, and Resurrection.</description>
+  <description>Divine harem mod with comprehensive slave management systems.
+
+=== NEW FEATURES ===
+
+1. FAITH &amp; EDICTS SYSTEM
+• Generate Faith daily from slave devotion
+• Spend Faith on powerful colony-wide Edicts:
+  - Bountiful Harvest: +40% plant work speed
+  - Fervent Labor: +25% global work speed
+  - Divine Fortification: +20% armor
+  - Holy War: +35% melee damage, +15% speed
+
+2. SPECIALIZATION ABILITIES
+Devoted slaves (Tier 3+) can specialize and gain active abilities:
+• Warrior: Challenger's Roar (taunt enemies)
+• Healer: Soothing Touch (instant heal)
+• Scholar: Moment of Insight (research boost)
+• Entertainer: Captivating Performance (AoE mood/recreation)
+
+3. PALACE OF HIDRA (Rival Faction)
+• Tech-heavy faction led by the "High God King"
+• Notoriety system tracks your divine power usage
+• Hunter raids scale with your notoriety
+• Prove who is the REAL god!
+
+4. ONE GOD RULE
+• Recruited pawns automatically become slaves
+• Only the God and slaves - no normal colonists
+• Quest pawns are exempted
+
+=== CORE FEATURES ===
+• Reincarnated God with Divine Abilities
+• Devotion system (Initiate → Faithful → Devoted → Zealot)
+• Divine Shield (slaves protect their master)
+• Resurrection ritual
+• Stockholm Syndrome and Protective Rage
+• Suppression Aura and Divine Healing
+</description>
   <modDependencies>
     <li>
       <packageId>brrainz.harmony</packageId>

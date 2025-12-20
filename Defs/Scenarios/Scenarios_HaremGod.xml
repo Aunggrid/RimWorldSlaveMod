@@ -7,10 +7,12 @@
 
 Features:
 • Reincarnated God with Divine Abilities (Smite, Mass Calm, Blessing, Wrath)
-• Devotion system - slaves grow from Unwilling to Ascended over time
+• Devotion system - slaves grow from Initiate to Zealot over time
 • Divine Shield - high-tier slaves can block attacks for their master
-• Proximity buffs when slaves are near their master
-• Resurrection ritual if the God falls</description>
+• Faith system - generate Faith from devotion, spend on Edicts
+• Specialization abilities for Tier 3+ slaves
+• Resurrection ritual if the God falls
+• Palace of Hidra - rival faction that hunts false gods</description>
     <scenario>
       <summary>A reincarnated god begins with a devoted harem of slaves who grow stronger through devotion.</summary>
       <playerFaction>

@@ -3,7 +3,7 @@
   <ScenPartDef>
     <defName>SRI_ScenPart_GodSetup</defName>
     <label>God and Harem Setup</label>
-    <description>The God starts with high stats, special traits, and divine abilities. Slaves start with devotion.</description>
+    <description>The God starts with high stats, special traits, and divine abilities. Slaves start with devotion and Stockholm Syndrome.</description>
     <scenPartClass>SlaveRealismImproved.ScenPart_GodSetup</scenPartClass>
     <category>StartingImportant</category>
   </ScenPartDef>
